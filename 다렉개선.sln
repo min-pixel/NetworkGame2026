@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.35122.118
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "다렉개선", "다렉개선.vcxproj", "{74D23652-6EC1-4300-9663-3FF386034838}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{74D23652-6EC1-4300-9663-3FF386034838}.Debug|x64.ActiveCfg = Debug|x64
+		{74D23652-6EC1-4300-9663-3FF386034838}.Debug|x64.Build.0 = Debug|x64
+		{74D23652-6EC1-4300-9663-3FF386034838}.Debug|x86.ActiveCfg = Debug|Win32
+		{74D23652-6EC1-4300-9663-3FF386034838}.Debug|x86.Build.0 = Debug|Win32
+		{74D23652-6EC1-4300-9663-3FF386034838}.Release|x64.ActiveCfg = Release|x64
+		{74D23652-6EC1-4300-9663-3FF386034838}.Release|x64.Build.0 = Release|x64
+		{74D23652-6EC1-4300-9663-3FF386034838}.Release|x86.ActiveCfg = Release|Win32
+		{74D23652-6EC1-4300-9663-3FF386034838}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {807F9A22-7BDA-493B-B4FA-5148EFEE8282}
+	EndGlobalSection
+EndGlobal
