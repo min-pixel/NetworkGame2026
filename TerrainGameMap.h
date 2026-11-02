@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "GameMap.h"
 #include "Mesh.h"
 
@@ -74,6 +76,11 @@ public:
     void RenderDirect(ID3D12GraphicsCommandList* commandList) override;
 
     void LoadSpawnPositions() override;
+
+    // 기존 1인용 호출을 유지하고, 다인용 시작 슬롯(0~3)을 조회한다.
+    using CGameMap::GetPlayerStartPosition;
+    // LoadMapData 성공 후 호출. 잘못된 슬롯이나 높이 조회 실패 시 false.
+    bool GetPlayerStartPosition(uint8_t playerIndex, XMFLOAT3& outPosition) const;
 
     bool TryGetGroundYAtPosition(const XMFLOAT3& position, float& outGroundY) const override;
 

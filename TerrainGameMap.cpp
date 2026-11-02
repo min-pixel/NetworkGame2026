@@ -404,6 +404,33 @@ void CTerrainGameMap::LoadSpawnPositions()
     }
 }
 
+bool CTerrainGameMap::GetPlayerStartPosition(uint8_t playerIndex, XMFLOAT3& outPosition) const
+{
+    if (playerIndex >= 4)
+    {
+        return false;
+    }
+
+    // 세 맵 모두 경계(약 +/-256) 안쪽에 네 시작점을 둔다.
+    // 맵마다 지형이 다르므로 Y는 해당 맵의 높이 데이터에서 구한다.
+    const XMFLOAT3 startPositions[4] =
+    {
+        XMFLOAT3(-180.0f, 0.0f, -180.0f),
+        XMFLOAT3(180.0f, 0.0f, -180.0f),
+        XMFLOAT3(-180.0f, 0.0f, 180.0f),
+        XMFLOAT3(180.0f, 0.0f, 180.0f)
+    };
+
+    XMFLOAT3 position = startPositions[playerIndex];
+    if (!TryGetGroundYAtPosition(position, position.y))
+    {
+        return false;
+    }
+
+    outPosition = position;
+    return true;
+}
+
 bool CTerrainGameMap::TryGetGroundYAtPosition(const XMFLOAT3& position, float& outGroundY) const
 {
     if (!terrain)
