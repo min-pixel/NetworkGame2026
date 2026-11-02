@@ -56,6 +56,7 @@
     <ClInclude Include="HelicopterPlayer.h" />
     <ClInclude Include="MapSelectScene.h" />
     <ClInclude Include="Mesh.h" />
+    <ClInclude Include="NetUtil.h" />
     <ClInclude Include="Npc.h" />
     <ClInclude Include="Object.h" />
     <ClInclude Include="Player.h" />
