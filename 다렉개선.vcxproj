@@ -31,6 +31,7 @@
     <ClCompile Include="HelicopterPlayer.cpp" />
     <ClCompile Include="MapSelectScene.cpp" />
     <ClCompile Include="Mesh.cpp" />
+    <ClCompile Include="NetworkClient.cpp" />
     <ClCompile Include="Npc.cpp" />
     <ClCompile Include="Object.cpp" />
     <ClCompile Include="Player.cpp" />
@@ -57,6 +58,7 @@
     <ClInclude Include="MapSelectScene.h" />
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="NetUtil.h" />
+    <ClInclude Include="NetworkClient.h" />
     <ClInclude Include="Npc.h" />
     <ClInclude Include="Object.h" />
     <ClInclude Include="Player.h" />
