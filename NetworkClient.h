@@ -2,6 +2,8 @@
 
 #include "Protocol.h"
 #include <winsock2.h>
+#include <windows.h>
+#include <queue>
 
 struct NetEvent
 {
@@ -21,12 +23,31 @@ struct LatestStates
     SC_BulletStates bulletStates = {};
 };
 
+
 class CNetworkClient
 {
 private:
     SOCKET m_tcpSock = INVALID_SOCKET;
+    SOCKET m_udpSock = INVALID_SOCKET;
+
+    HANDLE m_tcpThread = NULL;
+    CRITICAL_SECTION m_eventCs;
+    std::queue<NetEvent> m_eventQueue;
+
+    static DWORD WINAPI TcpRecvThread(LPVOID param);
+    void TcpRecvLoop();
 
 public:
+    CNetworkClient();
+    ~CNetworkClient();
+
     bool Connect(const char* serverIp);
+    bool StartReceive();
 };
 
+HANDLE m_tcpThread = NULL;
+CRITICAL_SECTION m_eventCs;
+std::queue<NetEvent> m_eventQueue;
+
+static DWORD WINAPI TcpRecvThread(LPVOID param);
+void TcpRecvLoop();
