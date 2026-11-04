@@ -1,5 +1,4 @@
 ﻿#include "GameServer.h"
-#include <cstdio>
 
 int main()
 {
@@ -10,6 +9,6 @@ int main()
         return 1;
     }
 
-    getchar();
+    server.AcceptLoop();
     return 0;
 }
