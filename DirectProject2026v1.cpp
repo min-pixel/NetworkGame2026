@@ -4,6 +4,7 @@
 
 #include "DirectProject2026v1.h"
 #include "GameFramework.h"
+#include "NetworkClient.h"
 
 #define MAX_LOADSTRING 100
 
@@ -24,6 +25,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
+
+    CNetworkClient networkClient;
+    gGameFramework.SetNetworkClient(&networkClient);
 
     MSG msg = {};
 
@@ -66,6 +70,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
         }
     }
     gGameFramework.OnDestroy();
+    gGameFramework.SetNetworkClient(nullptr);
 
     return (int) msg.wParam;
 }

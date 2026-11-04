@@ -30,6 +30,7 @@ private:
     void BuildObjects();
     void ReleaseObjects();
     void ProcessInput();
+    void ProcessNetEvents();
     void AnimateObjects();
 
     // 현재 씬을 지우고 새 씬을 만든다. GameMap1~3은 이때 기체 타입을 무작위로 정한다.

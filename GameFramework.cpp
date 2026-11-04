@@ -2,7 +2,7 @@
 
 #include "stdafx.h"
 #include "GameFramework.h"
-
+#include "NetworkClient.h"
 #include "GameScene.h"
 #include "StartScene.h"
 #include "MapSelectScene.h"
@@ -225,6 +225,22 @@ void CGameFramework::ProcessInput()
     }
 }
 
+void CGameFramework::ProcessNetEvents()
+{
+    if (m_networkClient == nullptr || scene == nullptr)
+    {
+        return;
+    }
+
+    std::vector<NetEvent> events;
+    m_networkClient->PopEvents(events);
+
+    for (int i = 0; i < (int)events.size(); i++)
+    {
+        scene->OnNetEvent(events[i]);
+    }
+}
+
 void CGameFramework::AnimateObjects()
 {
     if (scene)
@@ -242,6 +258,7 @@ void CGameFramework::FrameAdvance()
 
     gameTimer.Tick(0.0f);
 
+    ProcessNetEvents();
     ProcessInput();
     AnimateObjects();
 
