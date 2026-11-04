@@ -181,3 +181,17 @@ void CNetworkClient::TcpRecvLoop()
         LeaveCriticalSection(&m_eventCs);
     }
 }
+
+
+void CNetworkClient::PopEvents(std::vector<NetEvent>& events)
+{
+    EnterCriticalSection(&m_eventCs);
+
+    while (!m_eventQueue.empty())
+    {
+        events.push_back(m_eventQueue.front());
+        m_eventQueue.pop();
+    }
+
+    LeaveCriticalSection(&m_eventCs);
+}

@@ -7,6 +7,7 @@
 #include "Timer.h"
 #include "SceneBase.h"
 
+class CNetworkClient;
 // 한 프레임(FrameAdvance) 순서:
 //   타이머 갱신 -> 씬 입력 처리 -> 씬 로직 갱신 -> 씬 전환 확인 -> 렌더링 -> Present
 class CGameFramework
@@ -23,6 +24,7 @@ public:
 
     // 키 상태(keyBuffer)를 갱신하고, 입력 메시지를 현재 씬에 전달한다.
     void OnProcessingWindowMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void SetNetworkClient(CNetworkClient* client);
 
 private:
     void BuildObjects();
@@ -44,6 +46,7 @@ private:
     int clientHeight;
 
     CSceneBase* scene;
+    CNetworkClient* m_networkClient = nullptr;
     ESceneType currentSceneType = ESceneType::None;
 
     CGameTimer gameTimer;

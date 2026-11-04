@@ -4,6 +4,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <queue>
+#include <vector>
 
 struct NetEvent
 {
@@ -40,14 +41,8 @@ private:
 public:
     CNetworkClient();
     ~CNetworkClient();
+    void PopEvents(std::vector<NetEvent>& events);
 
     bool Connect(const char* serverIp);
     bool StartReceive();
 };
-
-HANDLE m_tcpThread = NULL;
-CRITICAL_SECTION m_eventCs;
-std::queue<NetEvent> m_eventQueue;
-
-static DWORD WINAPI TcpRecvThread(LPVOID param);
-void TcpRecvLoop();

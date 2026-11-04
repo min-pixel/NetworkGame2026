@@ -1116,3 +1116,8 @@ void CGameFramework::CheckSceneChange()
 
     ChangeScene(requested, true);
 }
+
+void CGameFramework::SetNetworkClient(CNetworkClient* client)
+{
+    m_networkClient = client;
+}
