@@ -37,6 +37,7 @@ private:
 
     static DWORD WINAPI TcpRecvThread(LPVOID param);
     void TcpRecvLoop();
+    uint8_t m_myPlayerId = INVALID_PLAYER_ID;
 
 public:
     CNetworkClient();
@@ -45,4 +46,6 @@ public:
 
     bool Connect(const char* serverIp);
     bool StartReceive();
+    void SetMyPlayerId(uint8_t playerId);
+    uint8_t GetMyPlayerId() const;
 };

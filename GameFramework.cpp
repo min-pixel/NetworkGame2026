@@ -237,6 +237,14 @@ void CGameFramework::ProcessNetEvents()
 
     for (int i = 0; i < (int)events.size(); i++)
     {
+        if (events[i].type == EPacketType::SC_ConnectResult)
+        {
+            if (events[i].connectResult.accepted == 1)
+            {
+                m_networkClient->SetMyPlayerId(events[i].connectResult.playerId);
+            }
+        }
+
         scene->OnNetEvent(events[i]);
     }
 }

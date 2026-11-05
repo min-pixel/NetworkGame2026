@@ -182,7 +182,6 @@ void CNetworkClient::TcpRecvLoop()
     }
 }
 
-
 void CNetworkClient::PopEvents(std::vector<NetEvent>& events)
 {
     EnterCriticalSection(&m_eventCs);
@@ -194,4 +193,14 @@ void CNetworkClient::PopEvents(std::vector<NetEvent>& events)
     }
 
     LeaveCriticalSection(&m_eventCs);
+}
+
+void CNetworkClient::SetMyPlayerId(uint8_t playerId)
+{
+    m_myPlayerId = playerId;
+}
+
+uint8_t CNetworkClient::GetMyPlayerId() const
+{
+    return m_myPlayerId;
 }
