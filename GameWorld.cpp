@@ -41,6 +41,7 @@ void CGameWorld::Clear()
     }
 
     players.clear();
+    lastShieldPressCounts.fill(0);
 
     localPlayer = nullptr;
 
@@ -134,8 +135,13 @@ bool CGameWorld::IsShieldBlocking(const CPlayer* player) const
 }
 
 // ===== Player =====
-CPlayer* CGameWorld::SpawnPlayer(EPlayerType playerType, const XMFLOAT3& position, const CGameMap* gameMap)
+CPlayer* CGameWorld::SpawnPlayer(EPlayerType playerType, const XMFLOAT3& position, const CGameMap* gameMap, uint8_t playerId)
 {
+    if (playerId != 255 && playerId >= 4)
+    {
+        return nullptr;
+    }
+
     CPlayer* player = nullptr;
 
     switch (playerType)
@@ -158,7 +164,15 @@ CPlayer* CGameWorld::SpawnPlayer(EPlayerType playerType, const XMFLOAT3& positio
 
     player->Update(0.0f);
 
+    player->playerId = playerId;
     AddPlayer(player);
+
+    // 등록 실패(만석 또는 중복 ID) 시 생성한 객체를 남기지 않는다.
+    if (std::find(players.begin(), players.end(), player) == players.end())
+    {
+        delete player;
+        return nullptr;
+    }
 
     return player;
 }
@@ -178,6 +192,41 @@ void CGameWorld::AddPlayer(CPlayer* player)
         }
     }
 
+    if (player->playerId == 255)
+    {
+        for (uint8_t candidate = 0; candidate < 4; ++candidate)
+        {
+            bool occupied = false;
+            for (const CPlayer* existingPlayer : players)
+            {
+                if (existingPlayer && existingPlayer->playerId == candidate)
+                {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (!occupied)
+            {
+                player->playerId = candidate;
+                break;
+            }
+        }
+    }
+
+    if (player->playerId >= 4)
+    {
+        return;
+    }
+
+    for (const CPlayer* existingPlayer : players)
+    {
+        if (existingPlayer && existingPlayer->playerId == player->playerId)
+        {
+            return;
+        }
+    }
+
+    lastShieldPressCounts[player->playerId] = 0;
     players.push_back(player);
 }
 
@@ -213,16 +262,53 @@ EPlayerType CGameWorld::GetLocalPlayerType() const
 
 void CGameWorld::UpdateLocalPlayer(float deltaTime, const PlayerInput& input, float thirdPersonYaw, const CGameMap* gameMap)
 {
-    if (!localPlayer || !localPlayer->IsActive() || localPlayer->IsDead())
+    if (!localPlayer || localPlayer->playerId >= lastShieldPressCounts.size())
     {
         return;
     }
 
-    const EPlayerType playerType = localPlayer->GetPlayerType();
+    const uint32_t pressCount = lastShieldPressCounts[localPlayer->playerId] +
+        (input.shieldTogglePressed ? 1u : 0u);
+    UpdatePlayer(localPlayer->playerId, deltaTime, input, thirdPersonYaw, pressCount, gameMap);
+}
 
-    if (input.shieldTogglePressed)
+void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInput& input, float thirdPersonYaw, uint32_t shieldPressCount, const CGameMap* gameMap)
+{
+    if (playerId >= lastShieldPressCounts.size() || !std::isfinite(deltaTime) ||
+        deltaTime < 0.0f || !std::isfinite(thirdPersonYaw) ||
+        !std::isfinite(input.moveForward) || !std::isfinite(input.moveRight))
     {
-        localPlayer->ToggleShield();
+        return;
+    }
+
+    CPlayer* player = nullptr;
+    for (CPlayer* candidate : players)
+    {
+        if (candidate && candidate->playerId == playerId)
+        {
+            player = candidate;
+            break;
+        }
+    }
+
+    if (!player || !player->IsActive() || player->IsDead())
+    {
+        return;
+    }
+
+    const EPlayerType playerType = player->GetPlayerType();
+
+    const uint32_t pressDelta = shieldPressCount - lastShieldPressCounts[playerId];
+    // unsigned 차이로 카운터 순환을 허용하고, 이전 값은 버린다.
+    if (pressDelta != 0 && pressDelta < 0x80000000u)
+    {
+        lastShieldPressCounts[playerId] = shieldPressCount;
+        // 누락된 누름을 반영한다. 두 번이면 꺼지고 쿨타임이므로 이후 누름은 효과가 없다.
+        const uint32_t toggleCount = (pressDelta > 2) ? 2 : pressDelta;
+        for (uint32_t i = 0; i < toggleCount; ++i)
+        {
+            player->ToggleShield();
+        }
     }
 
     float yawRadians = XMConvertToRadians(thirdPersonYaw);
@@ -232,18 +318,18 @@ void CGameWorld::UpdateLocalPlayer(float deltaTime, const PlayerInput& input, fl
 
     XMFLOAT3 moveDirection = Vector3::Add(Vector3::Multiply(forward, input.moveForward), Vector3::Multiply(right, input.moveRight));
 
-    const XMFLOAT3 previousPosition = localPlayer->GetPosition();
+    const XMFLOAT3 previousPosition = player->GetPosition();
 
-    localPlayer->MoveByDirection(moveDirection, deltaTime);
+    player->MoveByDirection(moveDirection, deltaTime);
 
-    KeepInsideMap(localPlayer, previousPosition, gameMap);
+    KeepInsideMap(player, previousPosition, gameMap);
 
     if (playerType == EPlayerType::Tank)
     {
-        SnapToGround(localPlayer, gameMap);
+        SnapToGround(player, gameMap);
     }
 
-    localPlayer->Update(deltaTime);
+    player->Update(deltaTime);
 
     if (playerType == EPlayerType::Tank)
     {
@@ -255,7 +341,7 @@ void CGameWorld::UpdateLocalPlayer(float deltaTime, const PlayerInput& input, fl
         return;
     }
 
-    XMFLOAT3 currentPosition = localPlayer->GetPosition();
+    XMFLOAT3 currentPosition = player->GetPosition();
 
     float groundY = 0.0f;
 
@@ -275,27 +361,27 @@ void CGameWorld::UpdateLocalPlayer(float deltaTime, const PlayerInput& input, fl
                 currentPosition.y = groundY;
             }
 
-            localPlayer->SetPosition(currentPosition.x, currentPosition.y, currentPosition.z);
+            player->SetPosition(currentPosition.x, currentPosition.y, currentPosition.z);
 
-            localPlayer->UpdateTransform();
-            localPlayer->UpdateCollider();
+            player->UpdateTransform();
+            player->UpdateCollider();
         }
         else if (currentPosition.y < groundY)
         {
-            localPlayer->SetPosition(currentPosition.x, groundY, currentPosition.z);
+            player->SetPosition(currentPosition.x, groundY, currentPosition.z);
 
-            localPlayer->UpdateTransform();
-            localPlayer->UpdateCollider();
+            player->UpdateTransform();
+            player->UpdateCollider();
         }
     }
     else
     {
         currentPosition.y -= fallSpeed * deltaTime;
 
-        localPlayer->SetPosition(currentPosition.x, currentPosition.y, currentPosition.z);
+        player->SetPosition(currentPosition.x, currentPosition.y, currentPosition.z);
 
-        localPlayer->UpdateTransform();
-        localPlayer->UpdateCollider();
+        player->UpdateTransform();
+        player->UpdateCollider();
     }
 }
 

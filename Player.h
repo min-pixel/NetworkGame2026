@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "Object.h"
 #include "PlayerType.h"
 
@@ -10,6 +12,9 @@
 class CPlayer : public CGameObject
 {
 public:
+    // 서버 좌석 번호(0~3). World에 등록되기 전에는 255(미배정).
+    uint8_t playerId = 255;
+
     CPlayer(float moveSpeed = 25.0f, float fireCooldown = 0.25f, int health = 100);
 
     ~CPlayer() override;

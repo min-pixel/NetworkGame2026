@@ -3,7 +3,12 @@
 
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <vector>
+#include <DirectXMath.h>
+
+using DirectX::XMFLOAT3;
 #include "PlayerType.h"
 #include "PlayerInput.h"
 #include "GameMode.h"
@@ -36,7 +41,7 @@ public:
     void Clear();
 
     // 타입에 맞는 Player를 만들어 지형 높이에 맞춰 놓고 World가 소유한다.
-    CPlayer* SpawnPlayer(EPlayerType playerType, const XMFLOAT3& position, const CGameMap* gameMap);
+    CPlayer* SpawnPlayer(EPlayerType playerType, const XMFLOAT3& position, const CGameMap* gameMap, uint8_t playerId = 255);
     void AddPlayer(CPlayer* player);
 
     std::vector<CPlayer*>& GetPlayers();
@@ -47,6 +52,11 @@ public:
     CPlayer* GetLocalPlayer() const;
     EPlayerType GetLocalPlayerType() const;
 
+    // 서버: PlayerId에 해당하는 기체만 갱신한다. yaw는 도 단위이다.
+    // shieldPressCount는 경기 중 누적 E 누름 횟수이며, 중복/오래된 값은 무시한다.
+    void UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInput& input, float thirdPersonYaw, uint32_t shieldPressCount, const CGameMap* gameMap);
+
+    // 기존 싱글플레이 입력을 UpdatePlayer로 전달한다.
     // Shield 토글, 카메라 yaw 기준 WASD 이동(맵 밖으로는 못 나감), 지형 높이 처리(Tank: 바로 붙음 / Helicopter: 천천히 하강)
     void UpdateLocalPlayer(float deltaTime, const PlayerInput& input, float thirdPersonYaw, const CGameMap* gameMap);
 
@@ -96,6 +106,7 @@ private:
 
 private:
     std::vector<CPlayer*> players;
+    std::array<uint32_t, 4> lastShieldPressCounts = {};
 
     // players 중 하나를 가리키는 비소유 포인터
     CPlayer* localPlayer = nullptr;
