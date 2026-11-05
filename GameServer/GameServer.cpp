@@ -7,16 +7,6 @@ struct TcpThreadParam
     SOCKET sock;
 };
 
-CGameServer::CGameServer()
-{
-    InitializeCriticalSection(&m_seatLock);
-
-    for (int i = 0; i < MAX_PLAYERS; ++i)
-    {
-        InitializeCriticalSection(&m_seats[i].sendLock);
-    }
-}
-
 CGameServer::~CGameServer()
 {
     closesocket(m_listenSock);
@@ -34,6 +24,14 @@ CGameServer::~CGameServer()
 
 bool CGameServer::Start()
 {
+    //261104
+    InitializeCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        InitializeCriticalSection(&m_seats[i].sendLock);
+    }
+
     WSADATA wsaData;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
@@ -143,7 +141,7 @@ void CGameServer::TcpCommLoop(SOCKET sock)
 {
     ERejectReason reason;
     uint8_t playerId = TryRegisterSeat(sock, reason);
-    //SendConnectResult(sock, playerId, reason);
+    SendConnectResult(sock, playerId, reason);
 
     if (playerId == INVALID_PLAYER_ID)
     {
@@ -161,4 +159,24 @@ void CGameServer::TcpCommLoop(SOCKET sock)
 
     printf("%d번 끊김\n", playerId);
     closesocket(sock);
+}
+
+void CGameServer::SendConnectResult(SOCKET sock, uint8_t playerId, ERejectReason reason)
+{
+    SC_ConnectResult packet = {};
+    packet.header.size = sizeof(packet);
+    packet.header.type = (uint8_t)EPacketType::SC_ConnectResult;
+    packet.accepted = (playerId != INVALID_PLAYER_ID);
+    packet.playerId = playerId;
+    packet.rejectReason = (uint8_t)reason;
+
+    if (playerId == INVALID_PLAYER_ID)
+    {
+        SendAll(sock, (const char*)&packet, sizeof(packet));
+        closesocket(sock);
+    }
+    else
+    {
+        SendPacket(m_seats[playerId], (const char*)&packet, sizeof(packet));
+    }
 }
