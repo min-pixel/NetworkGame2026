@@ -11,6 +11,7 @@
 #include "GameSessionConfig.h"
 
 #include <random>
+#include <cstdio>
 
 namespace
 {
@@ -242,6 +243,15 @@ void CGameFramework::ProcessNetEvents()
             if (events[i].connectResult.accepted == 1)
             {
                 m_networkClient->SetMyPlayerId(events[i].connectResult.playerId);
+                char message[128];
+                sprintf_s(message, "[CLIENT] ACCEPTED: PlayerId=%u\n",
+                    (unsigned)m_networkClient->GetMyPlayerId());
+
+                OutputDebugStringA(message);
+            }
+            else
+            {
+                OutputDebugStringA("[CLIENT] REJECTED\n");
             }
         }
 

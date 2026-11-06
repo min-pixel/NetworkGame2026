@@ -47,6 +47,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
         return FALSE;
     }
 
+    if (networkClient.Connect("127.0.0.1"))
+    {
+        OutputDebugStringA("[CLIENT] Connect success\n");
+
+        if (networkClient.StartReceive())
+        {
+            OutputDebugStringA("[CLIENT] StartReceive success\n");
+        }
+        else
+        {
+            MessageBoxA(NULL, "StartReceive 실패", "Network Test", MB_OK);
+        }
+    }
+    else
+    {
+        MessageBoxA(NULL, "Connect 실패", "Network Test", MB_OK);
+    }
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DIRECTPROJECT2026V1));
 
     while (true)
