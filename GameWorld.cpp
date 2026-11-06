@@ -267,12 +267,12 @@ void CGameWorld::UpdateLocalPlayer(float deltaTime, const PlayerInput& input, fl
         return;
     }
 
-    const uint32_t pressCount = lastShieldPressCounts[localPlayer->playerId] +
-        (input.shieldTogglePressed ? 1u : 0u);
+    const uint8_t pressCount = static_cast<uint8_t>(lastShieldPressCounts[localPlayer->playerId] +
+        (input.shieldTogglePressed ? 1u : 0u));
     UpdatePlayer(localPlayer->playerId, deltaTime, input, thirdPersonYaw, pressCount, gameMap);
 }
 
-void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInput& input, float thirdPersonYaw, uint32_t shieldPressCount, const CGameMap* gameMap)
+void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInput& input, float thirdPersonYaw, uint8_t shieldPressCount, const CGameMap* gameMap)
 {
     if (playerId >= lastShieldPressCounts.size() || !std::isfinite(deltaTime) ||
         deltaTime < 0.0f || !std::isfinite(thirdPersonYaw) ||
@@ -298,9 +298,9 @@ void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInp
 
     const EPlayerType playerType = player->GetPlayerType();
 
-    const uint32_t pressDelta = shieldPressCount - lastShieldPressCounts[playerId];
-    // unsigned 차이로 카운터 순환을 허용하고, 이전 값은 버린다.
-    if (pressDelta != 0 && pressDelta < 0x80000000u)
+    const uint8_t pressDelta = static_cast<uint8_t>(shieldPressCount - lastShieldPressCounts[playerId]);
+    // 8비트 차이로 255 -> 0 순환을 허용하고, 반 바퀴 이상 뒤쪽인 값은 버린다.
+    if (pressDelta != 0 && pressDelta < 128u)
     {
         lastShieldPressCounts[playerId] = shieldPressCount;
         // 누락된 누름을 반영한다. 두 번이면 꺼지고 쿨타임이므로 이후 누름은 효과가 없다.

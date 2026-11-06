@@ -53,8 +53,9 @@ public:
     EPlayerType GetLocalPlayerType() const;
 
     // 서버: PlayerId에 해당하는 기체만 갱신한다. yaw는 도 단위이다.
-    // shieldPressCount는 경기 중 누적 E 누름 횟수이며, 중복/오래된 값은 무시한다.
-    void UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInput& input, float thirdPersonYaw, uint32_t shieldPressCount, const CGameMap* gameMap);
+    // shieldPressCount는 패킷과 같은 uint8_t 누적 E 누름 횟수(255 다음 0)이다.
+    // 한 번에 128회 미만 증가를 전제로 중복/오래된 값을 무시한다. 새 경기에서는 0부터 센다.
+    void UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInput& input, float thirdPersonYaw, uint8_t shieldPressCount, const CGameMap* gameMap);
 
     // 기존 싱글플레이 입력을 UpdatePlayer로 전달한다.
     // Shield 토글, 카메라 yaw 기준 WASD 이동(맵 밖으로는 못 나감), 지형 높이 처리(Tank: 바로 붙음 / Helicopter: 천천히 하강)
@@ -106,7 +107,7 @@ private:
 
 private:
     std::vector<CPlayer*> players;
-    std::array<uint32_t, 4> lastShieldPressCounts = {};
+    std::array<uint8_t, 4> lastShieldPressCounts = {};
 
     // players 중 하나를 가리키는 비소유 포인터
     CPlayer* localPlayer = nullptr;
