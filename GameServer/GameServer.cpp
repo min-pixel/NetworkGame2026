@@ -245,3 +245,50 @@ void CGameServer::UdpRecvLoop()
         LeaveCriticalSection(&m_inputLock);
     }
 }
+
+void CGameServer::CopyInputs(CS_Input outInputs[MAX_PLAYERS])
+{
+    EnterCriticalSection(&m_inputLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        outInputs[i] = m_inputs[i].input;
+    }
+
+    LeaveCriticalSection(&m_inputLock);
+}
+
+void CGameServer::CopyUdpAddrs(sockaddr_in outAddrs[MAX_PLAYERS], bool outHasAddr[MAX_PLAYERS])
+{
+    EnterCriticalSection(&m_inputLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        outAddrs[i] = m_inputs[i].addr;
+        outHasAddr[i] = m_inputs[i].hasAddr;
+    }
+
+    LeaveCriticalSection(&m_inputLock);
+}
+
+void CGameServer::SendToAll(const char* data, int len)
+{
+    bool used[MAX_PLAYERS];
+
+    EnterCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        used[i] = m_seats[i].used;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (used[i])
+        {
+            SendPacket(m_seats[i], data, len);
+        }
+    }
+}

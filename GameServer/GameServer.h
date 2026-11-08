@@ -39,6 +39,10 @@ public:
     static DWORD WINAPI UdpRecvThread(LPVOID param);
     void UdpRecvLoop();
 
+    void CopyInputs(CS_Input outInputs[MAX_PLAYERS]);
+    void CopyUdpAddrs(sockaddr_in outAddrs[MAX_PLAYERS], bool outHasAddr[MAX_PLAYERS]);
+    void SendToAll(const char* data, int len);
+
 private:
     SOCKET m_listenSock = INVALID_SOCKET;
     SOCKET m_udpSock = INVALID_SOCKET;
