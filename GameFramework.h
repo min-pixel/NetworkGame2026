@@ -6,6 +6,7 @@
 #include "stdafx.h"
 #include "Timer.h"
 #include "SceneBase.h"
+#include "Protocol.h"
 
 class CNetworkClient;
 // 한 프레임(FrameAdvance) 순서:
@@ -49,6 +50,9 @@ private:
     CSceneBase* scene;
     CNetworkClient* m_networkClient = nullptr;
     ESceneType currentSceneType = ESceneType::None;
+
+    SC_GameStart m_gameStart = {};
+    bool m_hasGameStart = false;
 
     CGameTimer gameTimer;
 

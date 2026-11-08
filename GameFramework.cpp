@@ -255,6 +255,17 @@ void CGameFramework::ProcessNetEvents()
             }
         }
 
+        if (events[i].type == EPacketType::SC_GameStart)
+        {
+            if (events[i].gameStart.mapNumber >= 1 &&
+                events[i].gameStart.mapNumber <= 3 &&
+                events[i].gameStart.playerCount >= MIN_PLAYERS_TO_START &&
+                events[i].gameStart.playerCount <= MAX_PLAYERS)
+            {
+                m_gameStart = events[i].gameStart;
+                m_hasGameStart = true;
+            }
+        }
         scene->OnNetEvent(events[i]);
     }
 }
