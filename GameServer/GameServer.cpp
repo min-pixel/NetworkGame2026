@@ -63,6 +63,8 @@ bool CGameServer::Start()
 
     m_udpRecvThread = CreateThread(NULL, 0, UdpRecvThread, this, 0, NULL);
 
+    m_gameLoopThread = CreateThread(NULL, 0, CGameLoop::GameLoopThread, &m_gameLoop, 0, NULL);
+
     printf("서버 시작\n");
     return true;
 }
@@ -291,4 +293,16 @@ void CGameServer::SendToAll(const char* data, int len)
             SendPacket(m_seats[i], data, len);
         }
     }
+}
+
+void CGameServer::GetParticipants(bool outJoined[MAX_PLAYERS])
+{
+    EnterCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        outJoined[i] = m_seats[i].used;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
 }

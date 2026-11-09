@@ -1,4 +1,5 @@
 ﻿#include "NetUtil.h"
+#include "GameLoop.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -43,6 +44,8 @@ public:
     void CopyUdpAddrs(sockaddr_in outAddrs[MAX_PLAYERS], bool outHasAddr[MAX_PLAYERS]);
     void SendToAll(const char* data, int len);
 
+    void GetParticipants(bool outJoined[MAX_PLAYERS]);
+
 private:
     SOCKET m_listenSock = INVALID_SOCKET;
     SOCKET m_udpSock = INVALID_SOCKET;
@@ -54,5 +57,8 @@ private:
     InputSlot m_inputs[MAX_PLAYERS];
     CRITICAL_SECTION m_inputLock;
     HANDLE m_udpRecvThread = NULL;
+
+    CGameLoop m_gameLoop{ this };
+    HANDLE m_gameLoopThread = NULL;
 
 };
