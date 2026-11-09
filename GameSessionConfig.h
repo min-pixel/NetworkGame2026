@@ -24,4 +24,6 @@ struct GameSessionConfig
     // 앞의 playerCount개가 참가자이며, 같은 인덱스의 ID와 시작 위치가 한 쌍이다.
     std::array<uint8_t, 4> playerIds = { 255, 255, 255, 255 };
     std::array<DirectX::XMFLOAT3, 4> playerStartPositions = {};
+    // None인 칸은 공통 playerType을 사용한다.
+    std::array<EPlayerType, 4> playerTypes = {};
 };

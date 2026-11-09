@@ -17,6 +17,8 @@
 
 #include "GameWorld.h"
 
+#include <functional>
+
 class CCamera;
 class CPlayer;
 class CGameObject;
@@ -24,6 +26,8 @@ class CHumanoidObject;
 class CGameMap;
 class CHelicopterPlayer;
 class CEnemy;
+struct SC_GameStart;
+struct CS_Input;
 
 // AnimateObjects 한 프레임 흐름:
 //   플레이어(이동/사격/Shield) -> 적 AI -> 총알 이동 -> 피격 판정 -> 폭발 연출 -> 승패 확인
@@ -35,6 +39,8 @@ public:
 
     // config: 맵 번호, 기체 타입, 게임 규칙
     explicit CGameScene(const GameSessionConfig& config);
+    // 잘못된 시작 정보는 std::invalid_argument로 거절한다.
+    CGameScene(const SC_GameStart& gameStart, uint8_t myPlayerId);
 
     ~CGameScene()override;
 
@@ -42,6 +48,9 @@ public:
     void ReleaseObjects()override;
 
     bool ProcessInput(UCHAR* keyBuffer)override;
+
+    // 전송 순번은 네트워크 계층에서 경기 간에도 이어서 관리한다.
+    bool SendMyInput(uint32_t sequence, const std::function<bool(const CS_Input&)>& sendInput) const;
     void AnimateObjects(float deltaTime)override;
 
     void OnResize(int width, int height)override;
@@ -103,6 +112,7 @@ private:
     float pendingLookPitchDelta = 0.0f;
 
     bool pendingShieldTogglePressed = false;
+    uint8_t shieldPressCount = 0;
 
     // 쌓아 둔 입력을 PlayerInput으로 묶고, 한 번만 쓰는 값은 비운다.
     void UpdatePlayerInput();
@@ -124,6 +134,7 @@ private:
 
     // 아래 Player 포인터들은 모두 gameWorld가 소유한 객체를 가리키는 비소유 포인터 (delete 금지)
     CPlayer* localPlayer = nullptr;
+    std::array<CPlayer*, 4> m_playerById = {};
 
     // gameplay 객체(Player/Enemy/Bullet) 소유 및 시뮬레이션
     CGameWorld gameWorld;
@@ -134,7 +145,7 @@ private:
 
     // World에 플레이어 생성을 요청하고, 타입에 맞는 비소유 포인터를 저장한다.
     void CreateLocalPlayer();
-    void ApplyLocalPlayerDirectMeshes();
+    void ApplyPlayerDirectMeshes();
     const ThirdPersonCameraProfile& GetCurrentThirdPersonCameraProfile() const;
 
     void UpdateMouseCenter();
