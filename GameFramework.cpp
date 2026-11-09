@@ -235,6 +235,7 @@ void CGameFramework::ProcessNetEvents()
 
     std::vector<NetEvent> events;
     m_networkClient->PopEvents(events);
+    ESceneType nextGameScene = ESceneType::None;
 
     for (int i = 0; i < (int)events.size(); i++)
     {
@@ -264,9 +265,27 @@ void CGameFramework::ProcessNetEvents()
             {
                 m_gameStart = events[i].gameStart;
                 m_hasGameStart = true;
+
+                if (m_gameStart.mapNumber == 1)
+                {
+                    nextGameScene = ESceneType::GameMap1;
+                }
+                else if (m_gameStart.mapNumber == 2)
+                {
+                    nextGameScene = ESceneType::GameMap2;
+                }
+                else if (m_gameStart.mapNumber == 3)
+                {
+                    nextGameScene = ESceneType::GameMap3;
+                }
             }
         }
         scene->OnNetEvent(events[i]);
+    }
+
+    if (nextGameScene != ESceneType::None)
+    {
+        ChangeScene(nextGameScene, true);
     }
 }
 
@@ -1066,6 +1085,29 @@ bool CGameFramework::CreateSceneDirectResources()
 
 void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources)
 {
+    if (nextScene == ESceneType::GameMap1 ||
+        nextScene == ESceneType::GameMap2 ||
+        nextScene == ESceneType::GameMap3)
+    {
+        if (!m_hasGameStart || m_networkClient == nullptr)
+        {
+            return;
+        }
+
+        if (m_gameStart.mapNumber == 1)
+        {
+            nextScene = ESceneType::GameMap1;
+        }
+        else if (m_gameStart.mapNumber == 2)
+        {
+            nextScene = ESceneType::GameMap2;
+        }
+        else
+        {
+            nextScene = ESceneType::GameMap3;
+        }
+    }
+
     WaitForGpuComplete();
 
     if (scene)
@@ -1086,28 +1128,27 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
         break;
 
     case ESceneType::GameMap1:
-    {
-        GameSessionConfig config;
-        config.mapNumber = 1;
-        config.playerType = GetRandomPlayerType();
-        scene = new CGameScene(config);
-        break;
-    }
-
     case ESceneType::GameMap2:
-    {
-        GameSessionConfig config;
-        config.mapNumber = 2;
-        config.playerType = GetRandomPlayerType();
-        scene = new CGameScene(config);
-        break;
-    }
-
     case ESceneType::GameMap3:
     {
         GameSessionConfig config;
-        config.mapNumber = 3;
-        config.playerType = GetRandomPlayerType();
+
+        config.mapNumber = m_gameStart.mapNumber;
+        config.myPlayerId = m_networkClient->GetMyPlayerId();
+        config.playerCount = m_gameStart.playerCount;
+        config.playerType = (EPlayerType)m_gameStart.players[0].playerType;
+
+        for (int i = 0; i < config.playerCount; i++)
+        {
+            config.playerIds[i] = m_gameStart.players[i].playerId;
+
+            config.playerStartPositions[i] = DirectX::XMFLOAT3(
+                m_gameStart.players[i].x,
+                m_gameStart.players[i].y,
+                m_gameStart.players[i].z
+            );
+        }
+
         scene = new CGameScene(config);
         break;
     }
