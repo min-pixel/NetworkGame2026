@@ -31,6 +31,9 @@ private:
     SOCKET m_tcpSock = INVALID_SOCKET;
     SOCKET m_udpSock = INVALID_SOCKET;
 
+    sockaddr_in m_serverUdpAddr = {};
+    uint32_t m_inputSequence = 0;
+
     HANDLE m_tcpThread = NULL;
     CRITICAL_SECTION m_eventCs;
     std::queue<NetEvent> m_eventQueue;
@@ -46,6 +49,9 @@ public:
 
     bool Connect(const char* serverIp);
     bool StartReceive();
+
+    void SendInput(int8_t moveForward, int8_t moveRight, float cameraYaw, uint8_t fire, uint8_t shieldPressCount);
+
     void SetMyPlayerId(uint8_t playerId);
     uint8_t GetMyPlayerId() const;
 };

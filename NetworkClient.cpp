@@ -82,6 +82,8 @@ bool CNetworkClient::Connect(const char* serverIp)
         return false;
     }
     m_tcpSock = sock;
+    m_serverUdpAddr = addr;
+    m_serverUdpAddr.sin_port = htons(SERVER_UDP_PORT);
     return true;
 }
 
@@ -203,4 +205,41 @@ void CNetworkClient::SetMyPlayerId(uint8_t playerId)
 uint8_t CNetworkClient::GetMyPlayerId() const
 {
     return m_myPlayerId;
+}
+
+void CNetworkClient::SendInput(int8_t moveForward, int8_t moveRight,
+    float cameraYaw, uint8_t fire, uint8_t shieldPressCount)
+{
+    if (m_udpSock == INVALID_SOCKET)
+    {
+        return;
+    }
+
+    if (m_myPlayerId == INVALID_PLAYER_ID)
+    {
+        return;
+    }
+
+    CS_Input packet = {};
+
+    packet.header.size = sizeof(CS_Input);
+    packet.header.type = (uint8_t)EPacketType::CS_Input;
+
+    packet.playerId = m_myPlayerId;
+    packet.sequence = m_inputSequence++;
+
+    packet.moveForward = moveForward;
+    packet.moveRight = moveRight;
+    packet.cameraYaw = cameraYaw;
+    packet.fire = fire;
+    packet.shieldPressCount = shieldPressCount;
+
+    sendto(
+        m_udpSock,
+        (const char*)&packet,
+        sizeof(packet),
+        0,
+        (sockaddr*)&m_serverUdpAddr,
+        sizeof(m_serverUdpAddr)
+    );
 }
