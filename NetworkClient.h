@@ -35,11 +35,20 @@ private:
     uint32_t m_inputSequence = 0;
 
     HANDLE m_tcpThread = NULL;
+    HANDLE m_udpThread = NULL;
+
     CRITICAL_SECTION m_eventCs;
+    CRITICAL_SECTION m_stateCs;
+
     std::queue<NetEvent> m_eventQueue;
+    LatestStates m_latestStates = {};
 
     static DWORD WINAPI TcpRecvThread(LPVOID param);
     void TcpRecvLoop();
+
+    static DWORD WINAPI UdpRecvThread(LPVOID param);
+    void UdpRecvLoop();
+
     uint8_t m_myPlayerId = INVALID_PLAYER_ID;
 
 public:

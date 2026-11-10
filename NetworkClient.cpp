@@ -8,6 +8,7 @@
 CNetworkClient::CNetworkClient()
 {
     InitializeCriticalSection(&m_eventCs);
+    InitializeCriticalSection(&m_stateCs);
 }
 
 CNetworkClient::~CNetworkClient()
@@ -33,7 +34,14 @@ CNetworkClient::~CNetworkClient()
         CloseHandle(m_tcpThread);
     }
 
+    if (m_udpThread != NULL)
+    {
+        WaitForSingleObject(m_udpThread, INFINITE);
+        CloseHandle(m_udpThread);
+    }
+
     DeleteCriticalSection(&m_eventCs);
+    DeleteCriticalSection(&m_stateCs);
 
     if (connected)
     {
@@ -88,6 +96,7 @@ bool CNetworkClient::Connect(const char* serverIp)
 }
 
 
+
 bool CNetworkClient::StartReceive()
 {
     if (m_tcpSock == INVALID_SOCKET)
@@ -95,7 +104,9 @@ bool CNetworkClient::StartReceive()
         return false;
     }
 
-    if (m_udpSock != INVALID_SOCKET || m_tcpThread != NULL)
+    if (m_udpSock != INVALID_SOCKET ||
+        m_tcpThread != NULL ||
+        m_udpThread != NULL)
     {
         return false;
     }
@@ -104,6 +115,34 @@ bool CNetworkClient::StartReceive()
 
     if (m_udpSock == INVALID_SOCKET)
     {
+        return false;
+    }
+
+    sockaddr_in localAddr = {};
+    localAddr.sin_family = AF_INET;
+    localAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    localAddr.sin_port = htons(0);
+
+    if (bind(m_udpSock, (sockaddr*)&localAddr, sizeof(localAddr)) == SOCKET_ERROR)
+    {
+        closesocket(m_udpSock);
+        m_udpSock = INVALID_SOCKET;
+        return false;
+    }
+
+    m_udpThread = CreateThread(
+        NULL,
+        0,
+        UdpRecvThread,
+        this,
+        0,
+        NULL
+    );
+
+    if (m_udpThread == NULL)
+    {
+        closesocket(m_udpSock);
+        m_udpSock = INVALID_SOCKET;
         return false;
     }
 
@@ -120,11 +159,17 @@ bool CNetworkClient::StartReceive()
     {
         closesocket(m_udpSock);
         m_udpSock = INVALID_SOCKET;
+
+        WaitForSingleObject(m_udpThread, INFINITE);
+        CloseHandle(m_udpThread);
+        m_udpThread = NULL;
+
         return false;
     }
 
     return true;
 }
+
 
 DWORD WINAPI CNetworkClient::TcpRecvThread(LPVOID param)
 {
@@ -133,6 +178,89 @@ DWORD WINAPI CNetworkClient::TcpRecvThread(LPVOID param)
     client->TcpRecvLoop();
 
     return 0;
+}
+
+
+DWORD WINAPI CNetworkClient::UdpRecvThread(LPVOID param)
+{
+    CNetworkClient* client = (CNetworkClient*)param;
+
+    client->UdpRecvLoop();
+
+    return 0;
+}
+
+
+void CNetworkClient::UdpRecvLoop()
+{
+    char buf[1024];
+
+    while (1)
+    {
+        sockaddr_in senderAddr = {};
+        int senderLen = sizeof(senderAddr);
+
+        int received = recvfrom(
+            m_udpSock,
+            buf,
+            sizeof(buf),
+            0,
+            (sockaddr*)&senderAddr,
+            &senderLen
+        );
+
+        if (received == SOCKET_ERROR)
+        {
+            break;
+        }
+
+        if (received < STATE_PACKET_HEAD_SIZE)
+        {
+            continue;
+        }
+
+        if (senderAddr.sin_addr.s_addr != m_serverUdpAddr.sin_addr.s_addr ||
+            senderAddr.sin_port != m_serverUdpAddr.sin_port)
+        {
+            continue;
+        }
+
+        PacketHeader header = {};
+        memcpy(&header, buf, sizeof(PacketHeader));
+
+        if (header.size != received)
+        {
+            continue;
+        }
+
+        if (header.type == (uint8_t)EPacketType::SC_PlayerStates)
+        {
+            if (received > (int)sizeof(SC_PlayerStates))
+            {
+                continue;
+            }
+
+            SC_PlayerStates states = {};
+            memcpy(&states, buf, received);
+
+            if (states.count > MAX_PLAYERS)
+            {
+                continue;
+            }
+
+            int expectedSize = STATE_PACKET_HEAD_SIZE +
+                states.count * sizeof(PlayerStateInfo);
+
+            if (received != expectedSize)
+            {
+                continue;
+            }
+
+            EnterCriticalSection(&m_stateCs);
+            m_latestStates.playerStates = states;
+            LeaveCriticalSection(&m_stateCs);
+        }
+    }
 }
 
 void CNetworkClient::TcpRecvLoop()
