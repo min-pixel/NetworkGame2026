@@ -2,6 +2,7 @@
 #include "GameServer.h"
 #include "TerrainGameMap.h"
 #include "Player.h"
+
 #include <cstdio>
 
 DWORD WINAPI CGameLoop::GameLoopThread(LPVOID param)
@@ -36,7 +37,7 @@ bool CGameLoop::PrepareGame()
         return false;
     }
 
-    int mapNumber = 1;
+    int mapNumber = 3;
     EPlayerType playerType = EPlayerType::Helicopter;
 
     m_map = new CTerrainGameMap(mapNumber);
@@ -91,7 +92,49 @@ bool CGameLoop::PrepareGame()
 
     //Sleep(10000);
 
+    CS_Input inputs[MAX_PLAYERS];
+    m_server->CopyInputs(inputs);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        m_lastShieldCount[i] = inputs[i].shieldPressCount;
+    }
+
+    m_timer.Reset();
+
     m_server->SendToAll((const char*)&packet, sizeof(packet));
     printf("게임 준비 (맵 %d, %d명)\n", mapNumber, packet.playerCount);
     return true;
+}
+
+void CGameLoop::WaitNextTick()
+{
+    m_timer.Tick((float)TICK_RATE);
+}
+
+void CGameLoop::UpdateWorld(const CS_Input inputs[MAX_PLAYERS], std::vector<SC_Event>& outEvents)
+{
+    float deltaTime = 1.0f / TICK_RATE;
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (!m_playerById[i])
+        {
+            continue;
+        }
+
+        PlayerInput input = ToPlayerInput(inputs[i]);
+        uint8_t shieldCount = (uint8_t)(inputs[i].shieldPressCount - m_lastShieldCount[i]);
+
+        m_world.UpdatePlayer((uint8_t)i, deltaTime, input, inputs[i].cameraYaw, shieldCount, m_map);
+    }
+}
+
+PlayerInput CGameLoop::ToPlayerInput(const CS_Input& input)
+{
+    PlayerInput out;
+    out.moveForward = (float)input.moveForward;
+    out.moveRight = (float)input.moveRight;
+    out.fire = (input.fire != 0);
+    return out;
 }

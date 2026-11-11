@@ -147,6 +147,7 @@
     <ClCompile Include="Tank.cpp" />
     <ClCompile Include="TankPlayer.cpp" />
     <ClCompile Include="TerrainGameMap.cpp" />
+    <ClCompile Include="Timer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GameLoop.h" />
