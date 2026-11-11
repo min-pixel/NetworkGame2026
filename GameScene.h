@@ -28,6 +28,7 @@ class CHelicopterPlayer;
 class CEnemy;
 struct SC_GameStart;
 struct CS_Input;
+struct SC_PlayerStates;
 
 // AnimateObjects 한 프레임 흐름:
 //   플레이어(이동/사격/Shield) -> 적 AI -> 총알 이동 -> 피격 판정 -> 폭발 연출 -> 승패 확인
@@ -51,6 +52,8 @@ public:
 
     // 전송 순번은 네트워크 계층에서 경기 간에도 이어서 관리한다.
     bool SendMyInput(uint32_t sequence, const std::function<bool(const CS_Input&)>& sendInput) const;
+    // 네트워크 계층이 복사한 상태를 메인 스레드에서 반영한다.
+    void ApplyStates(const SC_PlayerStates& states);
     void AnimateObjects(float deltaTime)override;
 
     void OnResize(int width, int height)override;
@@ -135,6 +138,8 @@ private:
     // 아래 Player 포인터들은 모두 gameWorld가 소유한 객체를 가리키는 비소유 포인터 (delete 금지)
     CPlayer* localPlayer = nullptr;
     std::array<CPlayer*, 4> m_playerById = {};
+    uint32_t lastPlayerStateTick = 0;
+    bool hasPlayerStateTick = false;
 
     // gameplay 객체(Player/Enemy/Bullet) 소유 및 시뮬레이션
     CGameWorld gameWorld;

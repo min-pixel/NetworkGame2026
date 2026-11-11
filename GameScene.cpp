@@ -251,6 +251,7 @@ void CGameScene::ReleaseObjects()
 
     gameWorld.Clear();
     m_playerById.fill(nullptr);
+    hasPlayerStateTick = false;
     shieldPressCount = 0;
     currentPlayerInput = {};
     pendingShieldTogglePressed = false;
@@ -346,10 +347,53 @@ void CGameScene::UpdatePlayerInput()
     pendingShieldTogglePressed = false;
 }
 
+void CGameScene::ApplyStates(const SC_PlayerStates& states)
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer ||
+        states.count > MAX_PLAYERS)
+    {
+        return;
+    }
+
+    if (hasPlayerStateTick)
+    {
+        // 서버 틱이 최댓값에서 0으로 순환하는 경우도 새 상태로 처리한다.
+        const uint32_t elapsedTicks = states.tick - lastPlayerStateTick;
+        if (elapsedTicks == 0 || elapsedTicks >= 0x80000000u)
+        {
+            return;
+        }
+    }
+
+    for (size_t i = 0; i < states.count; ++i)
+    {
+        const PlayerStateInfo& state = states.players[i];
+        if (state.playerId != localPlayer->playerId)
+        {
+            continue;
+        }
+
+        if (!std::isfinite(state.x) || !std::isfinite(state.y) ||
+            !std::isfinite(state.z) || !std::isfinite(state.yaw))
+        {
+            return;
+        }
+
+        localPlayer->SetPosition(state.x, state.y, state.z);
+        localPlayer->SetRotation(0.0f, state.yaw, 0.0f);
+        // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
+        localPlayer->Update(0.0f);
+        lastPlayerStateTick = states.tick;
+        hasPlayerStateTick = true;
+        return;
+    }
+}
+
 void CGameScene::AnimateObjects(float deltaTime)
 {
     if (sessionConfig.gameMode == EGameMode::FreeForAll)
     {
+        // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
         if (localPlayer)
         {
             UpdateThirdPersonCamera(localPlayer->GetPosition(), GetCurrentThirdPersonCameraProfile());
