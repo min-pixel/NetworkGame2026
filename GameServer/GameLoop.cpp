@@ -9,10 +9,7 @@ DWORD WINAPI CGameLoop::GameLoopThread(LPVOID param)
 {
     CGameLoop* loop = (CGameLoop*)param;
 
-    while (!loop->PrepareGame())
-    {
-        Sleep(1000);
-    }
+    loop->Run();
 
     return 0;
 }
@@ -137,4 +134,96 @@ PlayerInput CGameLoop::ToPlayerInput(const CS_Input& input)
     out.moveRight = (float)input.moveRight;
     out.fire = (input.fire != 0);
     return out;
+}
+
+
+
+void CGameLoop::Run()
+{
+    while (!m_server->TryStartGame())
+    {
+        Sleep(1000);
+    }
+
+    if (!PrepareGame())
+    {
+        return;
+    }
+
+    while (true)
+    {
+        WaitNextTick();
+        RunTick();
+    }
+}
+
+void CGameLoop::RunTick()
+{
+    ++m_tick;
+    
+    //if (m_tick % TICK_RATE == 0) printf("ƽ %u\n", m_tick);
+
+    CS_Input inputs[MAX_PLAYERS];
+    m_server->CopyInputs(inputs);
+
+    std::vector<SC_Event> events;
+    UpdateWorld(inputs, events);
+
+    SendStates();
+}
+
+void CGameLoop::SendStates()
+{
+    SC_PlayerStates playerStates;
+    int playerBytes = FillPlayerStates(playerStates);
+
+    sockaddr_in addrs[MAX_PLAYERS];
+    bool hasAddr[MAX_PLAYERS];
+    m_server->CopyUdpAddrs(addrs, hasAddr);
+
+    SOCKET udpSock = m_server->GetUdpSocket();
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (!hasAddr[i])
+        {
+            continue;
+        }
+
+        sendto(udpSock, (const char*)&playerStates, playerBytes, 0, (sockaddr*)&addrs[i], sizeof(addrs[i]));
+    }
+}
+
+int CGameLoop::FillPlayerStates(SC_PlayerStates& out)
+{
+    out = {};
+    out.header.type = (uint8_t)EPacketType::SC_PlayerStates;
+    out.tick = m_tick;
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        CPlayer* player = m_playerById[i];
+
+        if (!player)
+        {
+            continue;
+        }
+
+        XMFLOAT3 position = player->GetPosition();
+        PlayerStateInfo& info = out.players[out.count];
+        info.playerId = (uint8_t)i;
+        info.state = (uint8_t)EPlayerState::Alive;
+        info.shieldEnabled = player->IsShieldEnabled() ? 1 : 0;
+        info.health = (uint8_t)player->GetHealth();
+        info.x = position.x;
+        info.y = position.y;
+        info.z = position.z;
+        info.yaw = player->GetRotation().y;
+
+        ++out.count;
+    }
+
+    int bytes = STATE_PACKET_HEAD_SIZE + (int)sizeof(PlayerStateInfo) * out.count;
+    out.header.size = (uint16_t)bytes;
+    return bytes;
 }

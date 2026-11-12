@@ -235,6 +235,7 @@ void CGameServer::UdpRecvLoop()
             {
                 slot.addr = from;
                 slot.hasAddr = true;
+                //printf("%d번 UDP 주소 등록\n", packet.playerId);
             }
 
             if (slot.addr.sin_addr.s_addr == from.sin_addr.s_addr && slot.addr.sin_port == from.sin_port)
@@ -305,4 +306,27 @@ void CGameServer::GetParticipants(bool outJoined[MAX_PLAYERS])
     }
 
     LeaveCriticalSection(&m_seatLock);
+}
+
+bool CGameServer::TryStartGame()
+{
+    bool start = false;
+
+    EnterCriticalSection(&m_seatLock);
+
+    if (!m_inGame)
+    {
+        for (int i = 0; i < MAX_PLAYERS; ++i)
+        {
+            if (m_seats[i].used)
+            {
+                start = true;
+            }
+        }
+
+        m_inGame = start;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+    return start;
 }
