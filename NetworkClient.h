@@ -55,6 +55,7 @@ public:
     CNetworkClient();
     ~CNetworkClient();
     void PopEvents(std::vector<NetEvent>& events);
+    void CopyLatestStates(LatestStates& states);
 
     bool Connect(const char* serverIp);
     bool StartReceive();

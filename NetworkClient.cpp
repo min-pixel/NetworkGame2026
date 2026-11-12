@@ -325,6 +325,15 @@ void CNetworkClient::PopEvents(std::vector<NetEvent>& events)
     LeaveCriticalSection(&m_eventCs);
 }
 
+void CNetworkClient::CopyLatestStates(LatestStates& states)
+{
+    EnterCriticalSection(&m_stateCs);
+
+    states = m_latestStates;
+
+    LeaveCriticalSection(&m_stateCs);
+}
+
 void CNetworkClient::SetMyPlayerId(uint8_t playerId)
 {
     m_myPlayerId = playerId;
