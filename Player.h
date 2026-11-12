@@ -34,6 +34,9 @@ public:
 
     void ApplyDamage(int amount);
     int GetHealth() const;
+    void SetHealth(int serverHealth);
+    void SetGhost(bool ghost);
+    bool IsGhost() const;
 
     // 기체가 바라보는 방향 (Update 때 회전값으로 갱신)
     XMFLOAT3 GetForward() const;
@@ -46,6 +49,7 @@ public:
     // 꺼진 뒤 shieldCooldown초 동안은 다시 켤 수 없다. 켜져 있을 때 누르면 바로 꺼진다(재사용 대기 시작).
     void ToggleShield();
     bool IsShieldEnabled() const;
+    void SetShieldEnabled(bool enabled);
 
 protected:
     // 기체별 총구 위치 지정 (파생 클래스 생성자에서 호출)
@@ -66,6 +70,7 @@ private:
     float fireTimer;
 
     int health;
+    bool isGhost = false;
 
     // Shield 시간 설정 (초)
     float shieldDuration = 3.0f;

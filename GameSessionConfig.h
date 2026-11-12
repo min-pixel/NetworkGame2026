@@ -4,10 +4,13 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <DirectXMath.h>
 
 #include "PlayerType.h"
 #include "GameMode.h"
+
+struct SC_PlayerStates;
 
 struct GameSessionConfig
 {
@@ -26,4 +29,8 @@ struct GameSessionConfig
     std::array<DirectX::XMFLOAT3, 4> playerStartPositions = {};
     // None인 칸은 공통 playerType을 사용한다.
     std::array<EPlayerType, 4> playerTypes = {};
+
+    // 프레임워크가 연결하는 네트워크 호출. 상태 복사는 새 플레이어 상태가 있으면 true.
+    std::function<void(int8_t, int8_t, float, uint8_t, uint8_t)> sendInput;
+    std::function<bool(SC_PlayerStates&)> copyPlayerStates;
 };

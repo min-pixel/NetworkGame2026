@@ -108,7 +108,7 @@ CPlayer* CGameWorld::FindNearestAlivePlayer(const XMFLOAT3& position) const
 
     for (CPlayer* player : players)
     {
-        if (!player || !player->IsActive() || player->IsDead())
+        if (!player || !player->IsActive() || player->IsDead() || player->IsGhost())
         {
             continue;
         }
@@ -291,7 +291,7 @@ void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInp
         }
     }
 
-    if (!player || !player->IsActive() || player->IsDead())
+    if (!player || !player->IsActive() || (player->IsDead() && !player->IsGhost()))
     {
         return;
     }
@@ -773,7 +773,7 @@ void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies)
         {
             for (CPlayer* player : players)
             {
-                if (!player || !player->IsActive() || player->IsDead() || !player->GetCollider())
+                if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
                 {
                     continue;
                 }

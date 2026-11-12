@@ -17,8 +17,6 @@
 
 #include "GameWorld.h"
 
-#include <functional>
-
 class CCamera;
 class CPlayer;
 class CGameObject;
@@ -27,7 +25,6 @@ class CGameMap;
 class CHelicopterPlayer;
 class CEnemy;
 struct SC_GameStart;
-struct CS_Input;
 struct SC_PlayerStates;
 
 // AnimateObjects 한 프레임 흐름:
@@ -50,8 +47,7 @@ public:
 
     bool ProcessInput(UCHAR* keyBuffer)override;
 
-    // 전송 순번은 네트워크 계층에서 경기 간에도 이어서 관리한다.
-    bool SendMyInput(uint32_t sequence, const std::function<bool(const CS_Input&)>& sendInput) const;
+    void SendMyInput() const;
     // 네트워크 계층이 복사한 상태를 메인 스레드에서 반영한다.
     void ApplyStates(const SC_PlayerStates& states);
     void AnimateObjects(float deltaTime)override;

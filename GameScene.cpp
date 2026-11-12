@@ -284,29 +284,24 @@ bool CGameScene::ProcessInput(UCHAR* keyBuffer)
 
     UpdatePlayerInput();
     ApplyThirdPersonLookInput();
+    SendMyInput();
 
     return true;
 }
 
-bool CGameScene::SendMyInput(
-    uint32_t sequence, const std::function<bool(const CS_Input&)>& sendInput) const
+void CGameScene::SendMyInput() const
 {
-    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer || !sendInput)
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer || !sessionConfig.sendInput)
     {
-        return false;
+        return;
     }
 
-    CS_Input packet = {};
-    packet.header.size = sizeof(packet);
-    packet.header.type = static_cast<uint8_t>(EPacketType::CS_Input);
-    packet.playerId = localPlayer->playerId;
-    packet.sequence = sequence;
-    packet.moveForward = static_cast<int8_t>(currentPlayerInput.moveForward);
-    packet.moveRight = static_cast<int8_t>(currentPlayerInput.moveRight);
-    packet.cameraYaw = thirdPersonCameraYaw;
-    packet.fire = currentPlayerInput.fire ? 1 : 0;
-    packet.shieldPressCount = shieldPressCount;
-    return sendInput(packet);
+    sessionConfig.sendInput(
+        static_cast<int8_t>(currentPlayerInput.moveForward),
+        static_cast<int8_t>(currentPlayerInput.moveRight),
+        thirdPersonCameraYaw,
+        currentPlayerInput.fire && !localPlayer->IsGhost() ? 1 : 0,
+        shieldPressCount);
 }
 
 void CGameScene::UpdatePlayerInput()
@@ -379,10 +374,14 @@ void CGameScene::ApplyStates(const SC_PlayerStates& states)
             return;
         }
 
+        localPlayer->SetHealth(state.health);
+        localPlayer->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
+        localPlayer->SetShieldEnabled(state.shieldEnabled != 0);
         localPlayer->SetPosition(state.x, state.y, state.z);
         localPlayer->SetRotation(0.0f, state.yaw, 0.0f);
         // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
         localPlayer->Update(0.0f);
+        UpdateShieldVisual();
         lastPlayerStateTick = states.tick;
         hasPlayerStateTick = true;
         return;
@@ -393,6 +392,12 @@ void CGameScene::AnimateObjects(float deltaTime)
 {
     if (sessionConfig.gameMode == EGameMode::FreeForAll)
     {
+        SC_PlayerStates states = {};
+        if (sessionConfig.copyPlayerStates && sessionConfig.copyPlayerStates(states))
+        {
+            ApplyStates(states);
+        }
+
         // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
         if (localPlayer)
         {
@@ -989,7 +994,7 @@ void CGameScene::RenderDirect(ID3D12GraphicsCommandList* commandList)
 
     for (CPlayer* player : gameWorld.GetPlayers())
     {
-        if (IsVisible(player, worldFrustum))
+        if (player && (player == localPlayer || !player->IsGhost()) && IsVisible(player, worldFrustum))
         {
             player->RenderDirect(commandList);
         }
