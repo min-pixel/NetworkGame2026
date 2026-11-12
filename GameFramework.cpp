@@ -308,6 +308,27 @@ void CGameFramework::FrameAdvance()
 
     ProcessNetEvents();
     ProcessInput();
+
+    if (m_networkClient != nullptr &&
+        m_networkClient->GetMyPlayerId() != INVALID_PLAYER_ID &&
+        scene != nullptr &&
+        (currentSceneType == ESceneType::GameMap1 ||
+            currentSceneType == ESceneType::GameMap2 ||
+            currentSceneType == ESceneType::GameMap3))
+    {
+        m_inputSendElapsed += gameTimer.GetTimeElapsed();
+
+        if (m_inputSendElapsed >= 1.0f / TICK_RATE)
+        {
+            m_inputSendElapsed -= 1.0f / TICK_RATE;
+            scene->SendMyInput();
+        }
+    }
+    else
+    {
+        m_inputSendElapsed = 0.0f;
+    }
+
     AnimateObjects();
 
     CheckSceneChange();

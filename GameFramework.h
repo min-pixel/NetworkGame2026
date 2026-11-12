@@ -53,7 +53,7 @@ private:
 
     SC_GameStart m_gameStart = {};
     bool m_hasGameStart = false;
-
+    float m_inputSendElapsed = 0.0f;
     CGameTimer gameTimer;
 
     // 가상 키 코드별 눌림 상태 (0x80 = 눌림)

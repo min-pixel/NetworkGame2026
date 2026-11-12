@@ -28,6 +28,7 @@ class CSceneBase
 public:
     virtual ~CSceneBase() = default;
     virtual void OnNetEvent(const NetEvent& event) {}
+    virtual void SendMyInput() {}
 
     // CPU 쪽 객체 생성 (GPU 리소스 생성은 BuildDirectResources)
     virtual void BuildObjects(int clientWidth, int clientHeight) = 0;
