@@ -71,6 +71,15 @@ CGameScene::CGameScene(const GameSessionConfig& config)
     thirdPersonCameraPitch(20.0f)
 {
     sessionConfig = config;
+    if (config.playerCount > 0 && config.playerCount <= config.playerIds.size() &&
+        config.myPlayerId < config.playerIds.size())
+    {
+        const auto end = config.playerIds.begin() + config.playerCount;
+        if (std::find(config.playerIds.begin(), end, config.myPlayerId) != end)
+        {
+            sessionConfig.gameMode = EGameMode::FreeForAll;
+        }
+    }
 
     mouseCenter.x = 0;
     mouseCenter.y = 0;
