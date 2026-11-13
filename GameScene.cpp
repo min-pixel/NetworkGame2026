@@ -284,12 +284,11 @@ bool CGameScene::ProcessInput(UCHAR* keyBuffer)
 
     UpdatePlayerInput();
     ApplyThirdPersonLookInput();
-    SendMyInput();
 
     return true;
 }
 
-void CGameScene::SendMyInput() const
+void CGameScene::SendMyInput()
 {
     if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer || !sessionConfig.sendInput)
     {
