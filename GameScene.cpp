@@ -406,6 +406,14 @@ void CGameScene::AnimateObjects(float deltaTime)
             ApplyStates(states);
         }
 
+        for (CPlayer* player : gameWorld.GetPlayers())
+        {
+            if (player)
+            {
+                player->CGameObject::Update(deltaTime);
+            }
+        }
+
         // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
         if (localPlayer)
         {
