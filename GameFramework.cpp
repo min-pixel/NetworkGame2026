@@ -1170,6 +1170,37 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
             );
         }
 
+        config.sendInput = [this](int8_t moveForward, int8_t moveRight,
+            float cameraYaw, uint8_t fire, uint8_t shieldPressCount)
+            {
+                if (m_networkClient != nullptr)
+                {
+                    m_networkClient->SendInput(
+                        moveForward, moveRight, cameraYaw, fire, shieldPressCount);
+                }
+            };
+
+        config.copyPlayerStates = [this](SC_PlayerStates& outStates) -> bool
+            {
+                if (m_networkClient == nullptr)
+                {
+                    return false;
+                }
+
+                LatestStates latest = {};
+                m_networkClient->CopyLatestStates(latest);
+
+                if (latest.playerStates.header.type !=
+                    (uint8_t)EPacketType::SC_PlayerStates ||
+                    latest.playerStates.count == 0)
+                {
+                    return false;
+                }
+
+                outStates = latest.playerStates;
+                return true;
+            };
+
         scene = new CGameScene(config);
         break;
     }
