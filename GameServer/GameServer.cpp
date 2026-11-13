@@ -19,13 +19,13 @@ CGameServer::~CGameServer()
     }
 
     DeleteCriticalSection(&m_seatLock);
-
+    DeleteCriticalSection(&m_inputLock);
 }
 
 bool CGameServer::Start()
 {
-    //261104
     InitializeCriticalSection(&m_seatLock);
+    InitializeCriticalSection(&m_inputLock);
 
     for (int i = 0; i < MAX_PLAYERS; ++i)
     {
@@ -60,6 +60,10 @@ bool CGameServer::Start()
         printf("UDP 실패 (%d)\n", WSAGetLastError());
         return false;
     }
+
+    m_udpRecvThread = CreateThread(NULL, 0, UdpRecvThread, this, 0, NULL);
+
+    m_gameLoopThread = CreateThread(NULL, 0, CGameLoop::GameLoopThread, &m_gameLoop, 0, NULL);
 
     printf("서버 시작\n");
     return true;
@@ -113,6 +117,11 @@ uint8_t CGameServer::TryRegisterSeat(SOCKET sock, ERejectReason& outReason)
                 m_seats[i].used = true;
                 m_seats[i].ready = false;
 
+                EnterCriticalSection(&m_inputLock);
+                m_inputs[i] = InputSlot();
+                m_inputs[i].active = true;
+                LeaveCriticalSection(&m_inputLock);
+
                 EnterCriticalSection(&m_seats[i].sendLock);
                 m_seats[i].sock = sock;
                 LeaveCriticalSection(&m_seats[i].sendLock);
@@ -145,7 +154,6 @@ void CGameServer::TcpCommLoop(SOCKET sock)
 
     if (playerId == INVALID_PLAYER_ID)
     {
-        closesocket(sock);
         return;
     }
 
@@ -179,4 +187,146 @@ void CGameServer::SendConnectResult(SOCKET sock, uint8_t playerId, ERejectReason
     {
         SendPacket(m_seats[playerId], (const char*)&packet, sizeof(packet));
     }
+}
+
+
+DWORD WINAPI CGameServer::UdpRecvThread(LPVOID param)
+{
+    CGameServer* server = (CGameServer*)param;
+    server->UdpRecvLoop();
+    return 0;
+}
+
+void CGameServer::UdpRecvLoop()
+{
+    CS_Input packet;
+    sockaddr_in from;
+    int fromLen;
+
+    while (true)
+    {
+        fromLen = sizeof(from);
+        int n = recvfrom(m_udpSock, (char*)&packet, sizeof(packet), 0, (sockaddr*)&from, &fromLen);
+
+        if (n == SOCKET_ERROR)
+        {
+            int error = WSAGetLastError();
+
+            if (error == WSAECONNRESET || error == WSAEMSGSIZE)
+            {
+                continue;
+            }
+
+            break;
+        }
+
+        if (n != sizeof(CS_Input) || packet.header.size != sizeof(CS_Input) || packet.header.type != (uint8_t)EPacketType::CS_Input || packet.playerId >= MAX_PLAYERS)
+        {
+            continue;
+        }
+
+        EnterCriticalSection(&m_inputLock);
+
+        InputSlot& slot = m_inputs[packet.playerId];
+
+        if (slot.active && packet.sequence > slot.lastSequence)
+        {
+            if (!slot.hasAddr)
+            {
+                slot.addr = from;
+                slot.hasAddr = true;
+                //printf("%d번 UDP 주소 등록\n", packet.playerId);
+            }
+
+            if (slot.addr.sin_addr.s_addr == from.sin_addr.s_addr && slot.addr.sin_port == from.sin_port)
+            {
+                slot.input = packet;
+                slot.lastSequence = packet.sequence;
+            }
+        }
+
+        LeaveCriticalSection(&m_inputLock);
+    }
+}
+
+void CGameServer::CopyInputs(CS_Input outInputs[MAX_PLAYERS])
+{
+    EnterCriticalSection(&m_inputLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        outInputs[i] = m_inputs[i].input;
+    }
+
+    LeaveCriticalSection(&m_inputLock);
+}
+
+void CGameServer::CopyUdpAddrs(sockaddr_in outAddrs[MAX_PLAYERS], bool outHasAddr[MAX_PLAYERS])
+{
+    EnterCriticalSection(&m_inputLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        outAddrs[i] = m_inputs[i].addr;
+        outHasAddr[i] = m_inputs[i].hasAddr;
+    }
+
+    LeaveCriticalSection(&m_inputLock);
+}
+
+void CGameServer::SendToAll(const char* data, int len)
+{
+    bool used[MAX_PLAYERS];
+
+    EnterCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        used[i] = m_seats[i].used;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (used[i])
+        {
+            SendPacket(m_seats[i], data, len);
+        }
+    }
+}
+
+void CGameServer::GetParticipants(bool outJoined[MAX_PLAYERS])
+{
+    EnterCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        outJoined[i] = m_seats[i].used;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+}
+
+bool CGameServer::TryStartGame()
+{
+    bool start = false;
+
+    EnterCriticalSection(&m_seatLock);
+
+    if (!m_inGame)
+    {
+        for (int i = 0; i < MAX_PLAYERS; ++i)
+        {
+            if (m_seats[i].used)
+            {
+                start = true;
+            }
+        }
+
+        m_inGame = start;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+    return start;
 }
