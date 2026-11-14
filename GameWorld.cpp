@@ -420,7 +420,7 @@ void CGameWorld::HandleLocalPlayerFire(const PlayerInput& input)
             continue;
         }
 
-        bullet->Fire(startPosition, normalizedDirection, EBulletOwner::Player);
+        bullet->Fire(startPosition, normalizedDirection, EBulletOwner::Player, localPlayer->playerId);
 
         localPlayer->ResetFireCooldown();
 
@@ -597,7 +597,7 @@ void CGameWorld::UpdateEnemyAI(CEnemy* enemy, CPlayer* target, float deltaTime, 
             continue;
         }
 
-        bullet->Fire(fireStartPosition, fireDirection, EBulletOwner::Enemy);
+        bullet->Fire(fireStartPosition, fireDirection, EBulletOwner::Enemy, 255);
 
         enemy->ResetFireCooldown();
 

@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "Object.h"
 
 // 누가 쏜 총알인지 (Player 총알은 적만, Enemy 총알은 Player만 맞힌다)
@@ -19,11 +21,12 @@ public:
     ~CBullet() override;
 
     // 비활성 총알을 활성화하고 발사 위치/방향/주인을 정한다.
-    void Fire(const XMFLOAT3& startPosition, const XMFLOAT3& direction, EBulletOwner newOwner);
+    void Fire(const XMFLOAT3& startPosition, const XMFLOAT3& direction, EBulletOwner newOwner, uint8_t newOwnerPlayerId);
     void Update(float deltaTime) override;
 
     int GetDamage() const;
     EBulletOwner GetOwner() const;
+    uint8_t GetOwnerPlayerId() const;
 
     // 직전 프레임 위치 (이전~현재 위치 사이로 지형 충돌을 검사할 때 사용)
     const XMFLOAT3& GetPreviousPosition() const;
@@ -37,4 +40,5 @@ private:
     float maxDistance;
     int damage;
     EBulletOwner owner;
+    uint8_t ownerPlayerId = 255;
 };
