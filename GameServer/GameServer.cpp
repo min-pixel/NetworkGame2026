@@ -236,12 +236,14 @@ void CGameServer::UdpRecvLoop()
                 slot.addr = from;
                 slot.hasAddr = true;
                 //printf("%d번 UDP 주소 등록\n", packet.playerId);
+                
             }
 
             if (slot.addr.sin_addr.s_addr == from.sin_addr.s_addr && slot.addr.sin_port == from.sin_port)
             {
                 slot.input = packet;
                 slot.lastSequence = packet.sequence;
+                if (packet.sequence % 30 == 0) printf("%d번 입력 순번 %u 앞뒤 %d 좌우 %d 카메라 %.1f\n", packet.playerId, packet.sequence, packet.moveForward, packet.moveRight, packet.cameraYaw);
             }
         }
 

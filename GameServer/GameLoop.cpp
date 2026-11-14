@@ -4,6 +4,7 @@
 #include "Player.h"
 
 #include <cstdio>
+#include <random>
 
 DWORD WINAPI CGameLoop::GameLoopThread(LPVOID param)
 {
@@ -34,8 +35,11 @@ bool CGameLoop::PrepareGame()
         return false;
     }
 
-    int mapNumber = 3;
-    EPlayerType playerType = EPlayerType::Helicopter;
+    static std::mt19937 randomGenerator(std::random_device{}());
+    int mapNumber = std::uniform_int_distribution<int>(1, 3)(randomGenerator);
+    EPlayerType playerType = (EPlayerType)std::uniform_int_distribution<int>(1, 2)(randomGenerator);
+
+    int startOffset = std::uniform_int_distribution<int>(0, 3)(randomGenerator);
 
     m_map = new CTerrainGameMap(mapNumber);
 
@@ -62,7 +66,7 @@ bool CGameLoop::PrepareGame()
         }
 
         XMFLOAT3 startPosition = m_map->GetPlayerStartPosition();
-        m_map->GetPlayerStartPosition((uint8_t)i, startPosition);
+        m_map->GetPlayerStartPosition((uint8_t)((i + startOffset) % MAX_PLAYERS), startPosition);
 
         CPlayer* player = m_world.SpawnPlayer(playerType, startPosition, m_map, (uint8_t)i);
 
@@ -100,7 +104,8 @@ bool CGameLoop::PrepareGame()
     m_timer.Reset();
 
     m_server->SendToAll((const char*)&packet, sizeof(packet));
-    printf("게임 준비 (맵 %d, %d명)\n", mapNumber, packet.playerCount);
+    //printf("게임 준비 (맵 %d, %d명)\n", mapNumber, packet.playerCount);
+    printf("게임 준비 (맵 %d, 기체 %d, %d명)\n", mapNumber, (int)playerType, packet.playerCount);
     return true;
 }
 
