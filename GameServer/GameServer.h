@@ -49,6 +49,9 @@ public:
     bool TryStartGame();
     SOCKET GetUdpSocket() const { return m_udpSock; }
 
+    void ClearInputs();
+
+
 private:
     SOCKET m_listenSock = INVALID_SOCKET;
     SOCKET m_udpSock = INVALID_SOCKET;

@@ -93,6 +93,8 @@ bool CGameLoop::PrepareGame()
 
     //Sleep(10000);
 
+    m_server->ClearInputs();
+
     CS_Input inputs[MAX_PLAYERS];
     m_server->CopyInputs(inputs);
 

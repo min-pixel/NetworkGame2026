@@ -318,17 +318,34 @@ bool CGameServer::TryStartGame()
 
     if (!m_inGame)
     {
+        int count = 0;
+
         for (int i = 0; i < MAX_PLAYERS; ++i)
         {
             if (m_seats[i].used)
             {
-                start = true;
+                ++count;
             }
         }
 
+        start = (count >= 3);
         m_inGame = start;
     }
 
     LeaveCriticalSection(&m_seatLock);
     return start;
+}
+
+void CGameServer::ClearInputs()
+{
+    EnterCriticalSection(&m_inputLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        m_inputs[i].input.moveForward = 0;
+        m_inputs[i].input.moveRight = 0;
+        m_inputs[i].input.fire = 0;
+    }
+
+    LeaveCriticalSection(&m_inputLock);
 }
