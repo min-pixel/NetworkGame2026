@@ -387,7 +387,15 @@ void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInp
 
 void CGameWorld::HandleLocalPlayerFire(const PlayerInput& input)
 {
-    if (!localPlayer || !localPlayer->IsActive() || localPlayer->IsDead())
+    if (localPlayer)
+    {
+        HandlePlayerFire(localPlayer, localPlayer->playerId, input);
+    }
+}
+
+void CGameWorld::HandlePlayerFire(CPlayer* player, uint8_t ownerPlayerId, const PlayerInput& input)
+{
+    if (!player || !player->IsActive() || player->IsDead())
     {
         return;
     }
@@ -397,12 +405,12 @@ void CGameWorld::HandleLocalPlayerFire(const PlayerInput& input)
         return;
     }
 
-    if (!localPlayer->CanFire())
+    if (player->IsGhost() || !player->CanFire())
     {
         return;
     }
 
-    XMFLOAT3 fireDirection = localPlayer->GetForward();
+    XMFLOAT3 fireDirection = player->GetForward();
 
     if (Vector3::Length(fireDirection) <= 0.0f)
     {
@@ -411,7 +419,7 @@ void CGameWorld::HandleLocalPlayerFire(const PlayerInput& input)
 
     XMFLOAT3 normalizedDirection = Vector3::Normalize(fireDirection);
 
-    XMFLOAT3 startPosition = localPlayer->GetMuzzlePosition();
+    XMFLOAT3 startPosition = player->GetMuzzlePosition();
 
     for (CBullet* bullet : bullets)
     {
@@ -420,9 +428,9 @@ void CGameWorld::HandleLocalPlayerFire(const PlayerInput& input)
             continue;
         }
 
-        bullet->Fire(startPosition, normalizedDirection, EBulletOwner::Player, localPlayer->playerId);
+        bullet->Fire(startPosition, normalizedDirection, EBulletOwner::Player, ownerPlayerId);
 
-        localPlayer->ResetFireCooldown();
+        player->ResetFireCooldown();
 
         break;
     }
@@ -688,7 +696,7 @@ void CGameWorld::UpdateBullets(float deltaTime, const CGameMap* gameMap)
     }
 }
 
-void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies)
+void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies, std::vector<CPlayer*>& outDeadPlayers)
 {
     for (CBullet* bullet : bullets)
     {
@@ -769,29 +777,41 @@ void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies)
             }
         }
 
-        else if (bullet->GetOwner() == EBulletOwner::Enemy)
+        if (!bullet->IsActive())
         {
-            for (CPlayer* player : players)
+            continue;
+        }
+
+        const bool firedByPlayer = bullet->GetOwner() == EBulletOwner::Player;
+        for (CPlayer* player : players)
+        {
+            if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
             {
-                if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
-                {
-                    continue;
-                }
-
-                if (!bullet->GetCollider()->Intersects(player->GetCollider()))
-                {
-                    continue;
-                }
-
-                bullet->SetActive(false);
-
-                if (!IsShieldBlocking(player))
-                {
-                    player->ApplyDamage(bullet->GetDamage());
-                }
-
-                break;
+                continue;
             }
+
+            if (firedByPlayer && bullet->GetOwnerPlayerId() == player->playerId)
+            {
+                continue;
+            }
+
+            if (!bullet->GetCollider()->Intersects(player->GetCollider()))
+            {
+                continue;
+            }
+
+            bullet->SetActive(false);
+
+            if (firedByPlayer || !IsShieldBlocking(player))
+            {
+                player->ApplyDamage(bullet->GetDamage());
+                if (player->IsDead())
+                {
+                    outDeadPlayers.push_back(player);
+                }
+            }
+
+            break;
         }
     }
 }
