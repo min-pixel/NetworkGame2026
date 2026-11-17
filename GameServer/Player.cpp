@@ -38,7 +38,7 @@ void CPlayer::Update(float deltaTime)
 
 bool CPlayer::CanFire() const
 {
-    return !isGhost && fireTimer <= 0.0f;
+    return fireTimer <= 0.0f;
 }
 
 void CPlayer::ResetFireCooldown()
@@ -53,11 +53,6 @@ EPlayerType CPlayer::GetPlayerType() const
 
 void CPlayer::ApplyDamage(int amount)
 {
-    if (isGhost)
-    {
-        return;
-    }
-
     health -= amount;
     if (health < 0)
     {
@@ -73,26 +68,6 @@ void CPlayer::ApplyDamage(int amount)
 int CPlayer::GetHealth() const
 {
     return health;
-}
-
-void CPlayer::SetHealth(int serverHealth)
-{
-    health = serverHealth < 0 ? 0 : serverHealth;
-}
-
-void CPlayer::SetGhost(bool ghost)
-{
-    isGhost = ghost;
-    SetActive(isGhost || !IsDead());
-    if (isGhost)
-    {
-        SetShieldEnabled(false);
-    }
-}
-
-bool CPlayer::IsGhost() const
-{
-    return isGhost;
 }
 
 XMFLOAT3 CPlayer::GetForward() const
@@ -153,11 +128,6 @@ void CPlayer::SetMuzzleOffset(float height, float forwardDistance)
 
 void CPlayer::ToggleShield()
 {
-    if (isGhost)
-    {
-        return;
-    }
-
     if (shieldEnabled)
     {
         StartShieldCooldown();
@@ -176,12 +146,6 @@ void CPlayer::ToggleShield()
 bool CPlayer::IsShieldEnabled() const
 {
     return shieldEnabled;
-}
-
-void CPlayer::SetShieldEnabled(bool enabled)
-{
-    shieldEnabled = enabled && !isGhost;
-    shieldTimer = shieldEnabled ? shieldDuration : 0.0f;
 }
 
 void CPlayer::UpdateShieldTimer(float deltaTime)

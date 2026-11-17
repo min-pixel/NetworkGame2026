@@ -108,7 +108,7 @@ CPlayer* CGameWorld::FindNearestAlivePlayer(const XMFLOAT3& position) const
 
     for (CPlayer* player : players)
     {
-        if (!player || !player->IsActive() || player->IsDead() || player->IsGhost())
+        if (!player || !player->IsActive() || player->IsDead())
         {
             continue;
         }
@@ -291,7 +291,7 @@ void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInp
         }
     }
 
-    if (!player || !player->IsActive() || (player->IsDead() && !player->IsGhost()))
+    if (!player || !player->IsActive() || player->IsDead())
     {
         return;
     }
@@ -387,15 +387,7 @@ void CGameWorld::UpdatePlayer(uint8_t playerId, float deltaTime, const PlayerInp
 
 void CGameWorld::HandleLocalPlayerFire(const PlayerInput& input)
 {
-    if (localPlayer)
-    {
-        HandlePlayerFire(localPlayer, localPlayer->playerId, input);
-    }
-}
-
-void CGameWorld::HandlePlayerFire(CPlayer* player, uint8_t ownerPlayerId, const PlayerInput& input)
-{
-    if (!player || !player->IsActive() || player->IsDead())
+    if (!localPlayer || !localPlayer->IsActive() || localPlayer->IsDead())
     {
         return;
     }
@@ -405,12 +397,12 @@ void CGameWorld::HandlePlayerFire(CPlayer* player, uint8_t ownerPlayerId, const 
         return;
     }
 
-    if (player->IsGhost() || !player->CanFire())
+    if (!localPlayer->CanFire())
     {
         return;
     }
 
-    XMFLOAT3 fireDirection = player->GetForward();
+    XMFLOAT3 fireDirection = localPlayer->GetForward();
 
     if (Vector3::Length(fireDirection) <= 0.0f)
     {
@@ -419,7 +411,7 @@ void CGameWorld::HandlePlayerFire(CPlayer* player, uint8_t ownerPlayerId, const 
 
     XMFLOAT3 normalizedDirection = Vector3::Normalize(fireDirection);
 
-    XMFLOAT3 startPosition = player->GetMuzzlePosition();
+    XMFLOAT3 startPosition = localPlayer->GetMuzzlePosition();
 
     for (CBullet* bullet : bullets)
     {
@@ -428,9 +420,9 @@ void CGameWorld::HandlePlayerFire(CPlayer* player, uint8_t ownerPlayerId, const 
             continue;
         }
 
-        bullet->Fire(startPosition, normalizedDirection, EBulletOwner::Player, ownerPlayerId);
+        bullet->Fire(startPosition, normalizedDirection, EBulletOwner::Player);
 
-        player->ResetFireCooldown();
+        localPlayer->ResetFireCooldown();
 
         break;
     }
@@ -605,7 +597,7 @@ void CGameWorld::UpdateEnemyAI(CEnemy* enemy, CPlayer* target, float deltaTime, 
             continue;
         }
 
-        bullet->Fire(fireStartPosition, fireDirection, EBulletOwner::Enemy, 255);
+        bullet->Fire(fireStartPosition, fireDirection, EBulletOwner::Enemy);
 
         enemy->ResetFireCooldown();
 
@@ -696,7 +688,7 @@ void CGameWorld::UpdateBullets(float deltaTime, const CGameMap* gameMap)
     }
 }
 
-void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies, std::vector<CPlayer*>& outDeadPlayers)
+void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies)
 {
     for (CBullet* bullet : bullets)
     {
@@ -777,41 +769,29 @@ void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies, std::vect
             }
         }
 
-        if (!bullet->IsActive())
+        else if (bullet->GetOwner() == EBulletOwner::Enemy)
         {
-            continue;
-        }
-
-        const bool firedByPlayer = bullet->GetOwner() == EBulletOwner::Player;
-        for (CPlayer* player : players)
-        {
-            if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
+            for (CPlayer* player : players)
             {
-                continue;
-            }
-
-            if (firedByPlayer && bullet->GetOwnerPlayerId() == player->playerId)
-            {
-                continue;
-            }
-
-            if (!bullet->GetCollider()->Intersects(player->GetCollider()))
-            {
-                continue;
-            }
-
-            bullet->SetActive(false);
-
-            if (firedByPlayer || !IsShieldBlocking(player))
-            {
-                player->ApplyDamage(bullet->GetDamage());
-                if (player->IsDead())
+                if (!player || !player->IsActive() || player->IsDead() || !player->GetCollider())
                 {
-                    outDeadPlayers.push_back(player);
+                    continue;
                 }
-            }
 
-            break;
+                if (!bullet->GetCollider()->Intersects(player->GetCollider()))
+                {
+                    continue;
+                }
+
+                bullet->SetActive(false);
+
+                if (!IsShieldBlocking(player))
+                {
+                    player->ApplyDamage(bullet->GetDamage());
+                }
+
+                break;
+            }
         }
     }
 }
