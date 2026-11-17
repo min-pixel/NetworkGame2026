@@ -368,31 +368,53 @@ void CGameScene::ApplyStates(const SC_PlayerStates& states)
         }
     }
 
+    bool appliedState = false;
     for (size_t i = 0; i < states.count; ++i)
     {
         const PlayerStateInfo& state = states.players[i];
-        if (state.playerId != localPlayer->playerId)
+        if (state.playerId >= m_playerById.size() ||
+            (state.state != static_cast<uint8_t>(EPlayerState::Alive) &&
+             state.state != static_cast<uint8_t>(EPlayerState::Ghost)))
         {
+            continue;
+        }
+
+        CPlayer* player = m_playerById[state.playerId];
+        if (!player)
+        {
+            continue;
+        }
+
+        const bool isGhost = state.state == static_cast<uint8_t>(EPlayerState::Ghost);
+        if (player != localPlayer)
+        {
+            // 다른 참가자의 유령 여부를 반영해 렌더링에서 제외한다.
+            player->SetGhost(isGhost);
+            appliedState = true;
             continue;
         }
 
         if (!std::isfinite(state.x) || !std::isfinite(state.y) ||
             !std::isfinite(state.z) || !std::isfinite(state.yaw))
         {
-            return;
+            continue;
         }
 
         localPlayer->SetHealth(state.health);
-        localPlayer->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
+        localPlayer->SetGhost(isGhost);
         localPlayer->SetShieldEnabled(state.shieldEnabled != 0);
         localPlayer->SetPosition(state.x, state.y, state.z);
         localPlayer->SetRotation(0.0f, state.yaw, 0.0f);
         // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
         localPlayer->Update(0.0f);
         UpdateShieldVisual();
+        appliedState = true;
+    }
+
+    if (appliedState)
+    {
         lastPlayerStateTick = states.tick;
         hasPlayerStateTick = true;
-        return;
     }
 }
 
