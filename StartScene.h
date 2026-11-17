@@ -33,6 +33,8 @@ public:
 
     void RenderDirect(ID3D12GraphicsCommandList* commandList) override;
 
+    void OnNetEvent(const NetEvent& event) override;
+
 private:
     void BuildStartText();
 

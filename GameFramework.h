@@ -6,7 +6,9 @@
 #include "stdafx.h"
 #include "Timer.h"
 #include "SceneBase.h"
+#include "Protocol.h"
 
+class CNetworkClient;
 // 한 프레임(FrameAdvance) 순서:
 //   타이머 갱신 -> 씬 입력 처리 -> 씬 로직 갱신 -> 씬 전환 확인 -> 렌더링 -> Present
 class CGameFramework
@@ -23,11 +25,13 @@ public:
 
     // 키 상태(keyBuffer)를 갱신하고, 입력 메시지를 현재 씬에 전달한다.
     void OnProcessingWindowMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void SetNetworkClient(CNetworkClient* client);
 
 private:
     void BuildObjects();
     void ReleaseObjects();
     void ProcessInput();
+    void ProcessNetEvents();
     void AnimateObjects();
 
     // 현재 씬을 지우고 새 씬을 만든다. GameMap1~3은 이때 기체 타입을 무작위로 정한다.
@@ -44,8 +48,12 @@ private:
     int clientHeight;
 
     CSceneBase* scene;
+    CNetworkClient* m_networkClient = nullptr;
     ESceneType currentSceneType = ESceneType::None;
 
+    SC_GameStart m_gameStart = {};
+    bool m_hasGameStart = false;
+    float m_inputSendElapsed = 0.0f;
     CGameTimer gameTimer;
 
     // 가상 키 코드별 눌림 상태 (0x80 = 눌림)

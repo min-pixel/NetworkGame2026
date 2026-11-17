@@ -11,6 +11,9 @@
 #include "Bullet.h"
 
 #include <algorithm>
+#include <stdexcept>
+
+#include "GameServer/Protocol.h"
 
 #include "GameMap.h"
 
@@ -68,11 +71,60 @@ CGameScene::CGameScene(const GameSessionConfig& config)
     thirdPersonCameraPitch(20.0f)
 {
     sessionConfig = config;
+    if (config.playerCount > 0 && config.playerCount <= config.playerIds.size() &&
+        config.myPlayerId < config.playerIds.size())
+    {
+        const auto end = config.playerIds.begin() + config.playerCount;
+        if (std::find(config.playerIds.begin(), end, config.myPlayerId) != end)
+        {
+            sessionConfig.gameMode = EGameMode::FreeForAll;
+        }
+    }
 
     mouseCenter.x = 0;
     mouseCenter.y = 0;
 
     ZeroMemory(inputBuffer, sizeof(inputBuffer));
+}
+
+CGameScene::CGameScene(const SC_GameStart& gameStart, uint8_t myPlayerId)
+    : CGameScene(GameSessionConfig{})
+{
+    if (gameStart.mapNumber < 1 || gameStart.mapNumber > 3 ||
+        gameStart.playerCount == 0 || gameStart.playerCount > MAX_PLAYERS ||
+        myPlayerId >= MAX_PLAYERS)
+    {
+        throw std::invalid_argument("Invalid game start");
+    }
+
+    sessionConfig.mapNumber = gameStart.mapNumber;
+    sessionConfig.gameMode = EGameMode::FreeForAll;
+    sessionConfig.myPlayerId = myPlayerId;
+    sessionConfig.playerCount = gameStart.playerCount;
+    sessionConfig.playerType = static_cast<EPlayerType>(gameStart.players[0].playerType);
+
+    std::array<bool, MAX_PLAYERS> seenIds = {};
+    for (size_t i = 0; i < gameStart.playerCount; ++i)
+    {
+        const PlayerStartInfo& player = gameStart.players[i];
+        const EPlayerType type = static_cast<EPlayerType>(player.playerType);
+        if (player.playerId >= MAX_PLAYERS || seenIds[player.playerId] ||
+            (type != EPlayerType::Tank && type != EPlayerType::Helicopter) ||
+            !std::isfinite(player.x) || !std::isfinite(player.y) || !std::isfinite(player.z))
+        {
+            throw std::invalid_argument("Invalid player start");
+        }
+
+        seenIds[player.playerId] = true;
+        sessionConfig.playerIds[i] = player.playerId;
+        sessionConfig.playerTypes[i] = type;
+        sessionConfig.playerStartPositions[i] = XMFLOAT3(player.x, player.y, player.z);
+    }
+
+    if (!seenIds[myPlayerId])
+    {
+        throw std::invalid_argument("Local player missing from game start");
+    }
 }
 
 CGameScene::~CGameScene()
@@ -87,7 +139,41 @@ void CGameScene::CreateLocalPlayer()
         return;
     }
 
-    CPlayer* createdPlayer = gameWorld.SpawnPlayer(sessionConfig.playerType, gameMap->GetPlayerStartPosition(), gameMap);
+    CPlayer* createdPlayer = nullptr;
+    if (sessionConfig.gameMode == EGameMode::FreeForAll)
+    {
+        if (sessionConfig.myPlayerId >= m_playerById.size() ||
+            sessionConfig.playerCount > sessionConfig.playerIds.size())
+        {
+            return;
+        }
+
+        for (size_t i = 0; i < sessionConfig.playerCount; ++i)
+        {
+            const uint8_t playerId = sessionConfig.playerIds[i];
+            if (playerId >= m_playerById.size() || m_playerById[playerId])
+            {
+                continue;
+            }
+
+            const EPlayerType playerType = sessionConfig.playerTypes[i] == EPlayerType::None
+                ? sessionConfig.playerType : sessionConfig.playerTypes[i];
+            // 서버에서 받은 시작 좌표는 지형 높이로 다시 보정하지 않는다.
+            m_playerById[playerId] = gameWorld.SpawnPlayer(
+                playerType, sessionConfig.playerStartPositions[i], nullptr, playerId);
+        }
+
+        createdPlayer = m_playerById[sessionConfig.myPlayerId];
+    }
+    else
+    {
+        createdPlayer = gameWorld.SpawnPlayer(
+            sessionConfig.playerType, gameMap->GetPlayerStartPosition(), gameMap);
+        if (createdPlayer)
+        {
+            m_playerById[createdPlayer->playerId] = createdPlayer;
+        }
+    }
 
     if (!createdPlayer)
     {
@@ -173,6 +259,14 @@ void CGameScene::ReleaseObjects()
     }
 
     gameWorld.Clear();
+    m_playerById.fill(nullptr);
+    hasPlayerStateTick = false;
+    shieldPressCount = 0;
+    currentPlayerInput = {};
+    pendingShieldTogglePressed = false;
+    pendingLookYawDelta = 0.0f;
+    pendingLookPitchDelta = 0.0f;
+    ZeroMemory(inputBuffer, sizeof(inputBuffer));
 
     localPlayer = nullptr;
 
@@ -198,8 +292,24 @@ bool CGameScene::ProcessInput(UCHAR* keyBuffer)
     }
 
     UpdatePlayerInput();
+    ApplyThirdPersonLookInput();
 
     return true;
+}
+
+void CGameScene::SendMyInput()
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer || !sessionConfig.sendInput)
+    {
+        return;
+    }
+
+    sessionConfig.sendInput(
+        static_cast<int8_t>(currentPlayerInput.moveForward),
+        static_cast<int8_t>(currentPlayerInput.moveRight),
+        thirdPersonCameraYaw,
+        currentPlayerInput.fire && !localPlayer->IsGhost() ? 1 : 0,
+        shieldPressCount);
 }
 
 void CGameScene::UpdatePlayerInput()
@@ -240,8 +350,76 @@ void CGameScene::UpdatePlayerInput()
     pendingShieldTogglePressed = false;
 }
 
+void CGameScene::ApplyStates(const SC_PlayerStates& states)
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer ||
+        states.count > MAX_PLAYERS)
+    {
+        return;
+    }
+
+    if (hasPlayerStateTick)
+    {
+        // 서버 틱이 최댓값에서 0으로 순환하는 경우도 새 상태로 처리한다.
+        const uint32_t elapsedTicks = states.tick - lastPlayerStateTick;
+        if (elapsedTicks == 0 || elapsedTicks >= 0x80000000u)
+        {
+            return;
+        }
+    }
+
+    for (size_t i = 0; i < states.count; ++i)
+    {
+        const PlayerStateInfo& state = states.players[i];
+        if (state.playerId != localPlayer->playerId)
+        {
+            continue;
+        }
+
+        if (!std::isfinite(state.x) || !std::isfinite(state.y) ||
+            !std::isfinite(state.z) || !std::isfinite(state.yaw))
+        {
+            return;
+        }
+
+        localPlayer->SetHealth(state.health);
+        localPlayer->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
+        localPlayer->SetShieldEnabled(state.shieldEnabled != 0);
+        localPlayer->SetPosition(state.x, state.y, state.z);
+        localPlayer->SetRotation(0.0f, state.yaw, 0.0f);
+        // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
+        localPlayer->Update(0.0f);
+        UpdateShieldVisual();
+        lastPlayerStateTick = states.tick;
+        hasPlayerStateTick = true;
+        return;
+    }
+}
+
 void CGameScene::AnimateObjects(float deltaTime)
 {
+    if (sessionConfig.gameMode == EGameMode::FreeForAll)
+    {
+        SC_PlayerStates states = {};
+        if (sessionConfig.copyPlayerStates && sessionConfig.copyPlayerStates(states))
+        {
+            ApplyStates(states);
+        }
+        for (CPlayer* player : gameWorld.GetPlayers())
+        {
+            if (player)
+            {
+                player->CGameObject::Update(deltaTime);
+            }
+        }
+        // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
+        if (localPlayer)
+        {
+            UpdateThirdPersonCamera(localPlayer->GetPosition(), GetCurrentThirdPersonCameraProfile());
+        }
+        return;
+    }
+
     UpdateLocalPlayerFrame(deltaTime);
 
     gameWorld.UpdateEnemies(deltaTime, gameMap);
@@ -324,7 +502,14 @@ bool CGameScene::OnProcessingKeyboardMessage(HWND hWnd, UINT message, WPARAM wPa
 
         if (wParam == 'E' && !wasKeyDown)
         {
-            pendingShieldTogglePressed = true;
+            if (sessionConfig.gameMode == EGameMode::FreeForAll)
+            {
+                ++shieldPressCount;
+            }
+            else
+            {
+                pendingShieldTogglePressed = true;
+            }
             return true;
         }
     }
@@ -700,7 +885,7 @@ bool CGameScene::BuildDirectResources(ID3D12Device* device, ID3D12GraphicsComman
         return false;
     }
 
-    ApplyLocalPlayerDirectMeshes();
+    ApplyPlayerDirectMeshes();
 
     ApplyEnemyDirectMeshes();
 
@@ -821,9 +1006,12 @@ void CGameScene::RenderDirect(ID3D12GraphicsCommandList* commandList)
         gameMap->RenderDirect(commandList);
     }
 
-    if (IsVisible(localPlayer, worldFrustum))
+    for (CPlayer* player : gameWorld.GetPlayers())
     {
-        localPlayer->RenderDirect(commandList);
+        if (player && (player == localPlayer || !player->IsGhost()) && IsVisible(player, worldFrustum))
+        {
+            player->RenderDirect(commandList);
+        }
     }
 
     for (CEnemy* enemy : enemies)
@@ -1049,37 +1237,25 @@ void CGameScene::UpdateThirdPersonCamera(const XMFLOAT3& targetPosition, const T
     camera->SetUp(XMFLOAT3(0.0f, 1.0f, 0.0f));
 }
 
-void CGameScene::ApplyLocalPlayerDirectMeshes()
+void CGameScene::ApplyPlayerDirectMeshes()
 {
-    if (!localPlayer)
+    for (CPlayer* player : gameWorld.GetPlayers())
     {
-        return;
-    }
-
-    switch (gameWorld.GetLocalPlayerType())
-    {
-    case EPlayerType::Helicopter:
-    {
-        if (helicopterPlayer)
+        switch (player->GetPlayerType())
         {
-            ApplyHelicopterDirectMeshes(helicopterPlayer);
+        case EPlayerType::Helicopter:
+            ApplyHelicopterDirectMeshes(static_cast<CHelicopterPlayer*>(player));
+            break;
+
+        case EPlayerType::Tank:
+            static_cast<CTankPlayer*>(player)->ApplyTankDirectMeshes(
+                sharedDirectTankBodyMesh, sharedDirectTankTurretMesh,
+                sharedDirectTankBarrelMesh, sharedDirectTankTrackMesh);
+            break;
+
+        default:
+            break;
         }
-
-        break;
-    }
-
-    case EPlayerType::Tank:
-    {
-        if (playerTank)
-        {
-            playerTank->ApplyTankDirectMeshes(sharedDirectTankBodyMesh, sharedDirectTankTurretMesh, sharedDirectTankBarrelMesh, sharedDirectTankTrackMesh);
-        }
-
-        break;
-    }
-
-    default:
-        break;
     }
 }
 
@@ -1138,8 +1314,6 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
     {
         return;
     }
-
-    ApplyThirdPersonLookInput();
 
     gameWorld.UpdateLocalPlayer(deltaTime, currentPlayerInput, thirdPersonCameraYaw, gameMap);
 

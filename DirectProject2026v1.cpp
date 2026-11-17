@@ -4,6 +4,7 @@
 
 #include "DirectProject2026v1.h"
 #include "GameFramework.h"
+#include "NetworkClient.h"
 
 #define MAX_LOADSTRING 100
 
@@ -25,6 +26,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
+    CNetworkClient networkClient;
+    gGameFramework.SetNetworkClient(&networkClient);
+
     MSG msg = {};
 
     if (LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING) == 0)
@@ -43,6 +47,23 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
         return FALSE;
     }
 
+    if (networkClient.Connect("127.0.0.1"))
+    {
+        OutputDebugStringA("[CLIENT] Connect success\n");
+
+        if (networkClient.StartReceive())
+        {
+            OutputDebugStringA("[CLIENT] StartReceive success\n");
+        }
+        else
+        {
+            MessageBoxA(NULL, "StartReceive 실패", "Network Test", MB_OK);
+        }
+    }
+    else
+    {
+        MessageBoxA(NULL, "Connect 실패", "Network Test", MB_OK);
+    }
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DIRECTPROJECT2026V1));
 
     while (true)
@@ -66,6 +87,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
         }
     }
     gGameFramework.OnDestroy();
+    gGameFramework.SetNetworkClient(nullptr);
 
     return (int) msg.wParam;
 }
