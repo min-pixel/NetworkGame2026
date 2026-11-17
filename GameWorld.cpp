@@ -696,7 +696,7 @@ void CGameWorld::UpdateBullets(float deltaTime, const CGameMap* gameMap)
     }
 }
 
-void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies, std::vector<CPlayer*>& outDeadPlayers)
+void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies)
 {
     for (CBullet* bullet : bullets)
     {
@@ -777,41 +777,29 @@ void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies, std::vect
             }
         }
 
-        if (!bullet->IsActive())
+        else if (bullet->GetOwner() == EBulletOwner::Enemy)
         {
-            continue;
-        }
-
-        const bool firedByPlayer = bullet->GetOwner() == EBulletOwner::Player;
-        for (CPlayer* player : players)
-        {
-            if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
+            for (CPlayer* player : players)
             {
-                continue;
-            }
-
-            if (firedByPlayer && bullet->GetOwnerPlayerId() == player->playerId)
-            {
-                continue;
-            }
-
-            if (!bullet->GetCollider()->Intersects(player->GetCollider()))
-            {
-                continue;
-            }
-
-            bullet->SetActive(false);
-
-            if (firedByPlayer || !IsShieldBlocking(player))
-            {
-                player->ApplyDamage(bullet->GetDamage());
-                if (player->IsDead())
+                if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
                 {
-                    outDeadPlayers.push_back(player);
+                    continue;
                 }
-            }
 
-            break;
+                if (!bullet->GetCollider()->Intersects(player->GetCollider()))
+                {
+                    continue;
+                }
+
+                bullet->SetActive(false);
+
+                if (!IsShieldBlocking(player))
+                {
+                    player->ApplyDamage(bullet->GetDamage());
+                }
+
+                break;
+            }
         }
     }
 }

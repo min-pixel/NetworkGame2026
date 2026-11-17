@@ -449,8 +449,7 @@ void CGameScene::AnimateObjects(float deltaTime)
 
     std::vector<CEnemy*> deadEnemies;
 
-    std::vector<CPlayer*> deadPlayers;
-    gameWorld.CheckBulletHits(deadEnemies, deadPlayers);
+    gameWorld.CheckBulletHits(deadEnemies);
 
     for (CEnemy* enemy : deadEnemies)
     {

@@ -83,7 +83,7 @@ public:
 
     // Player 총알 -> Enemy, Enemy 총알 -> Player 피격 판정
     // 이번 프레임에 죽은 적은 outDeadEnemies로 돌려준다 (폭발 연출용)
-    void CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies, std::vector<CPlayer*>& outDeadPlayers);
+    void CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies);
 
     std::vector<CBullet*>& GetBullets();
     const std::vector<CBullet*>& GetBullets() const;
