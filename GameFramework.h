@@ -53,6 +53,10 @@ private:
 
     SC_GameStart m_gameStart = {};
     bool m_hasGameStart = false;
+
+    SC_GameResult m_gameResult = {};
+    bool m_hasGameResult = false;
+
     float m_inputSendElapsed = 0.0f;
     CGameTimer gameTimer;
 

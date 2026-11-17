@@ -266,6 +266,9 @@ void CGameFramework::ProcessNetEvents()
                 m_gameStart = events[i].gameStart;
                 m_hasGameStart = true;
 
+                m_gameResult = {};
+                m_hasGameResult = false;
+
                 if (m_gameStart.mapNumber == 1)
                 {
                     nextGameScene = ESceneType::GameMap1;
@@ -280,6 +283,20 @@ void CGameFramework::ProcessNetEvents()
                 }
             }
         }
+        
+        if (events[i].type == EPacketType::SC_GameResult)
+        {
+            m_gameResult = events[i].gameResult;
+            m_hasGameResult = true;
+
+            char message[128];
+            sprintf_s(message, "[CLIENT] GAME RESULT: winner=%u\n",
+                (unsigned)m_gameResult.winnerPlayerId);
+
+            OutputDebugStringA(message);
+        }
+
+
         scene->OnNetEvent(events[i]);
     }
 
