@@ -385,12 +385,14 @@ void CGameScene::ApplyStates(const SC_PlayerStates& states)
             continue;
         }
 
-        const bool isGhost = state.state == static_cast<uint8_t>(EPlayerState::Ghost);
+        player->SetHealth(state.health);
+        player->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
+        player->SetShieldEnabled(state.shieldEnabled != 0);
+        UpdateShieldVisual(player);
+        appliedState = true;
+
         if (player != localPlayer)
         {
-            // 다른 참가자의 유령 여부를 반영해 렌더링에서 제외한다.
-            player->SetGhost(isGhost);
-            appliedState = true;
             continue;
         }
 
@@ -400,15 +402,10 @@ void CGameScene::ApplyStates(const SC_PlayerStates& states)
             continue;
         }
 
-        localPlayer->SetHealth(state.health);
-        localPlayer->SetGhost(isGhost);
-        localPlayer->SetShieldEnabled(state.shieldEnabled != 0);
         localPlayer->SetPosition(state.x, state.y, state.z);
         localPlayer->SetRotation(0.0f, state.yaw, 0.0f);
         // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
         localPlayer->Update(0.0f);
-        UpdateShieldVisual();
-        appliedState = true;
     }
 
     if (appliedState)
@@ -1344,7 +1341,7 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
 
     gameWorld.HandleLocalPlayerFire(currentPlayerInput);
 
-    UpdateShieldVisual();
+    UpdateShieldVisual(localPlayer);
 
     if (camera)
     {
@@ -1352,9 +1349,9 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
     }
 }
 
-void CGameScene::UpdateShieldVisual()
+void CGameScene::UpdateShieldVisual(CPlayer* player)
 {
-    if (!localPlayer)
+    if (!player)
     {
         return;
     }
@@ -1362,22 +1359,24 @@ void CGameScene::UpdateShieldVisual()
     const XMFLOAT4 shieldColor(0.75f, 0.95f, 1.0f, 1.0f);
     const XMFLOAT4 shieldTailColor(0.55f, 0.75f, 0.85f, 1.0f);
 
-    const bool shieldEnabled = localPlayer->IsShieldEnabled();
+    const bool shieldEnabled = player->IsShieldEnabled();
 
-    if (playerTank)
+    if (player->GetPlayerType() == EPlayerType::Tank)
     {
-        playerTank->SetTankColor(shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
+        static_cast<CTankPlayer*>(player)->SetTankColor(
+            shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
     }
 
-    if (helicopterPlayer)
+    if (player->GetPlayerType() == EPlayerType::Helicopter)
     {
+        auto* helicopter = static_cast<CHelicopterPlayer*>(player);
         if (shieldEnabled)
         {
-            helicopterPlayer->SetHelicopterColor(shieldColor, shieldTailColor);
+            helicopter->SetHelicopterColor(shieldColor, shieldTailColor);
         }
         else
         {
-            helicopterPlayer->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
+            helicopter->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
         }
     }
 }

@@ -176,7 +176,7 @@ private:
     void UpdateLocalPlayerFrame(float deltaTime);
 
     // Shield 상태를 기체 색으로 표시 (켜지면 두 기체 모두 같은 색)
-    void UpdateShieldVisual();
+    void UpdateShieldVisual(CPlayer* player);
 
     // 적 사망 시 흩어지는 폭발 블록 (표현 전용, 1초 뒤 삭제)
     struct FExplosionBlock
