@@ -225,6 +225,9 @@ void CGameServer::UdpRecvLoop()
             continue;
         }
 
+        //printf("%d번 입력 순번 %u 앞뒤 %d 좌우 %d 카메라 %.1f 발사 %d 쉴드 %d\n", packet.playerId, packet.sequence, packet.moveForward, packet.moveRight, packet.cameraYaw, packet.fire, packet.shieldPressCount);
+
+
         EnterCriticalSection(&m_inputLock);
 
         InputSlot& slot = m_inputs[packet.playerId];
@@ -243,7 +246,7 @@ void CGameServer::UdpRecvLoop()
             {
                 slot.input = packet;
                 slot.lastSequence = packet.sequence;
-                if (packet.sequence % 30 == 0) printf("%d번 입력 순번 %u 앞뒤 %d 좌우 %d 카메라 %.1f\n", packet.playerId, packet.sequence, packet.moveForward, packet.moveRight, packet.cameraYaw);
+                //if (packet.sequence % 30 == 0) printf("%d번 입력 순번 %u 앞뒤 %d 좌우 %d 카메라 %.1f\n", packet.playerId, packet.sequence, packet.moveForward, packet.moveRight, packet.cameraYaw);
             }
         }
 

@@ -27,6 +27,9 @@ public:
     void SendStates();
     int FillPlayerStates(SC_PlayerStates& out);
 
+    int FillEnemyStates(SC_EnemyStates& out);
+
+
 private:
     CGameServer* m_server;
     CTerrainGameMap* m_map = nullptr;
