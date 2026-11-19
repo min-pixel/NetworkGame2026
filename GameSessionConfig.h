@@ -11,6 +11,7 @@
 #include "GameMode.h"
 
 struct SC_PlayerStates;
+struct LatestStates;
 
 struct GameSessionConfig
 {
@@ -33,4 +34,6 @@ struct GameSessionConfig
     // 프레임워크가 연결하는 네트워크 호출. 상태 복사는 새 플레이어 상태가 있으면 true.
     std::function<void(int8_t, int8_t, float, uint8_t, uint8_t)> sendInput;
     std::function<bool(SC_PlayerStates&)> copyPlayerStates;
+    // CopyLatestStates로 받은 플레이어·적·총알 상태를 한 번에 전달한다.
+    std::function<void(LatestStates&)> copyLatestStates;
 };

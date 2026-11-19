@@ -49,7 +49,7 @@ public:
 
     void SendMyInput();
     // 네트워크 계층이 복사한 상태를 메인 스레드에서 반영한다.
-    void ApplyStates(const SC_PlayerStates& states);
+    void ApplyStates(const LatestStates& states);
     void AnimateObjects(float deltaTime)override;
 
     void OnResize(int width, int height)override;
@@ -136,6 +136,10 @@ private:
     std::array<CPlayer*, 4> m_playerById = {};
     uint32_t lastPlayerStateTick = 0;
     bool hasPlayerStateTick = false;
+    uint32_t lastEnemyStateTick = 0;
+    uint32_t lastBulletStateTick = 0;
+    bool hasEnemyStateTick = false;
+    bool hasBulletStateTick = false;
 
     // gameplay 객체(Player/Enemy/Bullet) 소유 및 시뮬레이션
     CGameWorld gameWorld;
