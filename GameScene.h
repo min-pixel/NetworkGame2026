@@ -26,6 +26,7 @@ class CHelicopterPlayer;
 class CEnemy;
 struct SC_GameStart;
 struct SC_PlayerStates;
+struct LatestStates;
 
 // AnimateObjects 한 프레임 흐름:
 //   플레이어(이동/사격/Shield) -> 적 AI -> 총알 이동 -> 피격 판정 -> 폭발 연출 -> 승패 확인

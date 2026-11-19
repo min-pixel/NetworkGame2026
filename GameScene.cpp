@@ -478,13 +478,8 @@ void CGameScene::AnimateObjects(float deltaTime)
     if (sessionConfig.gameMode == EGameMode::FreeForAll)
     {
         LatestStates states = {};
-        if (sessionConfig.copyLatestStates)
-        {
-            sessionConfig.copyLatestStates(states);
-            ApplyStates(states);
-        }
-        else if (sessionConfig.copyPlayerStates &&
-                 sessionConfig.copyPlayerStates(states.playerStates))
+        if (sessionConfig.copyPlayerStates &&
+            sessionConfig.copyPlayerStates(states.playerStates))
         {
             states.playerStates.header.type = static_cast<uint8_t>(EPacketType::SC_PlayerStates);
             ApplyStates(states);
