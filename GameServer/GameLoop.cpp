@@ -2,6 +2,7 @@
 #include "GameServer.h"
 #include "TerrainGameMap.h"
 #include "Player.h"
+#include "Bullet.h"
 
 #include <cstdio>
 #include <random>
@@ -199,6 +200,8 @@ void CGameLoop::SendStates()
     SC_EnemyStates enemyStates;
     int enemyBytes = FillEnemyStates(enemyStates);
 
+    SC_BulletStates bulletStates;
+    int bulletBytes = FillBulletStates(bulletStates);
 
     sockaddr_in addrs[MAX_PLAYERS];
     bool hasAddr[MAX_PLAYERS];
@@ -206,7 +209,8 @@ void CGameLoop::SendStates()
 
     SOCKET udpSock = m_server->GetUdpSocket();
 
-    if (m_tick % TICK_RATE == 0) printf("틱 %u: 적 %d마리, %d바이트\n", m_tick, enemyStates.count, enemyBytes);
+    //if (m_tick % TICK_RATE == 0) printf("틱 %u: 적 %d마리, %d바이트\n", m_tick, enemyStates.count, enemyBytes);
+    if (m_tick % TICK_RATE == 0) printf("틱 %u: 적 %d마리 %d바이트, 총알 %d발 %d바이트\n", m_tick, enemyStates.count, enemyBytes, bulletStates.count, bulletBytes);
 
     for (int i = 0; i < MAX_PLAYERS; ++i)
     {
@@ -218,6 +222,9 @@ void CGameLoop::SendStates()
         sendto(udpSock, (const char*)&playerStates, playerBytes, 0, (sockaddr*)&addrs[i], sizeof(addrs[i]));
 
         sendto(udpSock, (const char*)&enemyStates, enemyBytes, 0, (sockaddr*)&addrs[i], sizeof(addrs[i]));
+
+
+        sendto(udpSock, (const char*)&bulletStates, bulletBytes, 0, (sockaddr*)&addrs[i], sizeof(addrs[i]));
     }
 }
 
@@ -285,6 +292,38 @@ int CGameLoop::FillEnemyStates(SC_EnemyStates& out)
     }
 
     int bytes = STATE_PACKET_HEAD_SIZE + (int)sizeof(EnemyStateInfo) * out.count;
+    out.header.size = (uint16_t)bytes;
+    return bytes;
+}
+
+
+int CGameLoop::FillBulletStates(SC_BulletStates& out)
+{
+    out = {};
+    out.header.type = (uint8_t)EPacketType::SC_BulletStates;
+    out.tick = m_tick;
+
+    std::vector<CBullet*>& bullets = m_world.GetBullets();
+
+    for (int i = 0; i < (int)bullets.size() && out.count < MAX_BULLETS; ++i)
+    {
+        CBullet* bullet = bullets[i];
+
+        if (!bullet || !bullet->IsActive())
+        {
+            continue;
+        }
+
+        XMFLOAT3 position = bullet->GetPosition();
+        BulletStateInfo& info = out.bullets[out.count];
+        info.x = position.x;
+        info.y = position.y;
+        info.z = position.z;
+
+        ++out.count;
+    }
+
+    int bytes = STATE_PACKET_HEAD_SIZE + (int)sizeof(BulletStateInfo) * out.count;
     out.header.size = (uint16_t)bytes;
     return bytes;
 }

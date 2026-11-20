@@ -30,6 +30,8 @@ public:
     int FillEnemyStates(SC_EnemyStates& out);
 
 
+    int FillBulletStates(SC_BulletStates& out);
+
 private:
     CGameServer* m_server;
     CTerrainGameMap* m_map = nullptr;

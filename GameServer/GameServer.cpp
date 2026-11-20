@@ -331,7 +331,7 @@ bool CGameServer::TryStartGame()
             }
         }
 
-        start = (count >= 3);
+        start = (count >= 1);
         m_inGame = start;
     }
 
