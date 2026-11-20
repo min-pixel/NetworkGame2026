@@ -9,6 +9,7 @@
 
 #include "PlayerType.h"
 #include "GameMode.h"
+#include "NetworkClient.h"
 
 struct SC_PlayerStates;
 
@@ -33,4 +34,5 @@ struct GameSessionConfig
     // 프레임워크가 연결하는 네트워크 호출. 상태 복사는 새 플레이어 상태가 있으면 true.
     std::function<void(int8_t, int8_t, float, uint8_t, uint8_t)> sendInput;
     std::function<bool(SC_PlayerStates&)> copyPlayerStates;
+    std::function<void(LatestStates&)> copyLatestStates;
 };

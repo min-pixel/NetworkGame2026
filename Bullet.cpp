@@ -23,12 +23,13 @@ CBullet::~CBullet()
 {
 }
 
-void CBullet::Fire(const XMFLOAT3& startPosition, const XMFLOAT3& fireDirection, EBulletOwner newOwner)
+void CBullet::Fire(const XMFLOAT3& startPosition, const XMFLOAT3& fireDirection, EBulletOwner newOwner, uint8_t newOwnerPlayerId)
 {
     previousPosition = startPosition;
     position = startPosition;
     direction = Vector3::Normalize(fireDirection);
     owner = newOwner;
+    ownerPlayerId = newOwner == EBulletOwner::Player ? newOwnerPlayerId : 255;
 
     elapsedTime = 0.0f;
     SetActive(true);
@@ -63,6 +64,11 @@ int CBullet::GetDamage() const
 EBulletOwner CBullet::GetOwner() const
 {
     return owner;
+}
+
+uint8_t CBullet::GetOwnerPlayerId() const
+{
+    return ownerPlayerId;
 }
 
 const XMFLOAT3& CBullet::GetPreviousPosition() const

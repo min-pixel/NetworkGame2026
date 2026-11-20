@@ -260,11 +260,14 @@ void CGameFramework::ProcessNetEvents()
         {
             if (events[i].gameStart.mapNumber >= 1 &&
                 events[i].gameStart.mapNumber <= 3 &&
-                events[i].gameStart.playerCount >= 1 &&
+                events[i].gameStart.playerCount >= 2 &&
                 events[i].gameStart.playerCount <= MAX_PLAYERS)
             {
                 m_gameStart = events[i].gameStart;
                 m_hasGameStart = true;
+
+                m_gameResult = {};
+                m_hasGameResult = false;
 
                 if (m_gameStart.mapNumber == 1)
                 {
@@ -280,6 +283,20 @@ void CGameFramework::ProcessNetEvents()
                 }
             }
         }
+        
+        if (events[i].type == EPacketType::SC_GameResult)
+        {
+            m_gameResult = events[i].gameResult;
+            m_hasGameResult = true;
+
+            char message[128];
+            sprintf_s(message, "[CLIENT] GAME RESULT: winner=%u\n",
+                (unsigned)m_gameResult.winnerPlayerId);
+
+            OutputDebugStringA(message);
+        }
+
+
         scene->OnNetEvent(events[i]);
     }
 
@@ -1201,6 +1218,15 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
                 return true;
             };
 
+
+        config.copyLatestStates = [this](LatestStates& outStates)
+            {
+                if (m_networkClient != nullptr)
+                {
+                    m_networkClient->CopyLatestStates(outStates);
+                }
+            };
+
         scene = new CGameScene(config);
         break;
     }
@@ -1260,3 +1286,4 @@ void CGameFramework::SetNetworkClient(CNetworkClient* client)
 {
     m_networkClient = client;
 }
+

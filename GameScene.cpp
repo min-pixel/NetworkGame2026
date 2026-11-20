@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-#include "GameServer/Protocol.h"
+#include "NetworkClient.h"
 
 #include "GameMap.h"
 
@@ -261,6 +261,8 @@ void CGameScene::ReleaseObjects()
     gameWorld.Clear();
     m_playerById.fill(nullptr);
     hasPlayerStateTick = false;
+    hasEnemyStateTick = false;
+    hasBulletStateTick = false;
     shieldPressCount = 0;
     currentPlayerInput = {};
     pendingShieldTogglePressed = false;
@@ -350,49 +352,124 @@ void CGameScene::UpdatePlayerInput()
     pendingShieldTogglePressed = false;
 }
 
-void CGameScene::ApplyStates(const SC_PlayerStates& states)
+void CGameScene::ApplyStates(const LatestStates& latest)
 {
-    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer ||
-        states.count > MAX_PLAYERS)
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer)
     {
         return;
     }
 
-    if (hasPlayerStateTick)
+    const SC_PlayerStates& states = latest.playerStates;
+    const uint32_t playerElapsed = states.tick - lastPlayerStateTick;
+    if (states.header.type == static_cast<uint8_t>(EPacketType::SC_PlayerStates) &&
+        states.count <= MAX_PLAYERS &&
+        (!hasPlayerStateTick || (playerElapsed != 0 && playerElapsed < 0x80000000u)))
     {
-        // 서버 틱이 최댓값에서 0으로 순환하는 경우도 새 상태로 처리한다.
-        const uint32_t elapsedTicks = states.tick - lastPlayerStateTick;
-        if (elapsedTicks == 0 || elapsedTicks >= 0x80000000u)
-        {
-            return;
-        }
-    }
 
-    for (size_t i = 0; i < states.count; ++i)
-    {
-        const PlayerStateInfo& state = states.players[i];
-        if (state.playerId != localPlayer->playerId)
+        bool appliedState = false;
+        for (size_t i = 0; i < states.count; ++i)
         {
-            continue;
-        }
+            const PlayerStateInfo& state = states.players[i];
+            if (state.playerId >= m_playerById.size() ||
+            (state.state != static_cast<uint8_t>(EPlayerState::Alive) &&
+            state.state != static_cast<uint8_t>(EPlayerState::Ghost)))
+            {
+                continue;
+            }
 
-        if (!std::isfinite(state.x) || !std::isfinite(state.y) ||
+            CPlayer* player = m_playerById[state.playerId];
+            if (!player)
+            {
+                continue;
+            }
+
+            player->SetHealth(state.health);
+            player->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
+            player->SetShieldEnabled(state.shieldEnabled != 0);
+            UpdateShieldVisual(player);
+            appliedState = true;
+
+            if (!std::isfinite(state.x) || !std::isfinite(state.y) ||
             !std::isfinite(state.z) || !std::isfinite(state.yaw))
-        {
-            return;
+            {
+                continue;
+            }
+
+            player->SetPosition(state.x, state.y, state.z);
+            player->SetRotation(0.0f, state.yaw, 0.0f);
+            // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
+            player->CGameObject::Update(0.0f);
         }
 
-        localPlayer->SetHealth(state.health);
-        localPlayer->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
-        localPlayer->SetShieldEnabled(state.shieldEnabled != 0);
-        localPlayer->SetPosition(state.x, state.y, state.z);
-        localPlayer->SetRotation(0.0f, state.yaw, 0.0f);
-        // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
-        localPlayer->Update(0.0f);
-        UpdateShieldVisual();
-        lastPlayerStateTick = states.tick;
-        hasPlayerStateTick = true;
-        return;
+        if (appliedState)
+        {
+            lastPlayerStateTick = states.tick;
+            hasPlayerStateTick = true;
+        }
+    }
+
+    const SC_EnemyStates& enemyStates = latest.enemyStates;
+    const uint32_t enemyElapsed = enemyStates.tick - lastEnemyStateTick;
+    if (enemyStates.header.type == static_cast<uint8_t>(EPacketType::SC_EnemyStates) &&
+        enemyStates.count <= MAX_ENEMIES &&
+        (!hasEnemyStateTick || (enemyElapsed != 0 && enemyElapsed < 0x80000000u)))
+    {
+        auto& enemies = gameWorld.GetEnemies();
+        for (size_t i = 0; i < enemyStates.count; ++i)
+        {
+            const EnemyStateInfo& state = enemyStates.enemies[i];
+            if (state.enemyIndex >= enemies.size() || !enemies[state.enemyIndex] ||
+                !std::isfinite(state.x) || !std::isfinite(state.y) ||
+                !std::isfinite(state.z) || !std::isfinite(state.yaw))
+            {
+                continue;
+            }
+            CEnemy* enemy = enemies[state.enemyIndex];
+            if (!enemy->IsActive() || enemy->IsDead())
+            {
+                continue;
+            }
+            enemy->SetPosition(state.x, state.y, state.z);
+            enemy->SetRotation(0.0f, state.yaw, 0.0f);
+            enemy->CGameObject::Update(0.0f);
+        }
+        lastEnemyStateTick = enemyStates.tick;
+        hasEnemyStateTick = true;
+    }
+
+    const SC_BulletStates& bulletStates = latest.bulletStates;
+    const uint32_t bulletElapsed = bulletStates.tick - lastBulletStateTick;
+    if (bulletStates.header.type == static_cast<uint8_t>(EPacketType::SC_BulletStates) &&
+        bulletStates.count <= MAX_BULLETS &&
+        (!hasBulletStateTick || (bulletElapsed != 0 && bulletElapsed < 0x80000000u)))
+    {
+        for (size_t i = 0; i < bulletStates.count; ++i)
+        {
+            const BulletStateInfo& state = bulletStates.bullets[i];
+            if (!std::isfinite(state.x) || !std::isfinite(state.y) || !std::isfinite(state.z))
+            {
+                return;
+            }
+        }
+        auto& bullets = gameWorld.GetBullets();
+        for (size_t i = 0; i < bullets.size(); ++i)
+        {
+            CBullet* bullet = bullets[i];
+            if (!bullet)
+            {
+                continue;
+            }
+            const bool active = i < bulletStates.count;
+            bullet->SetActive(active);
+            if (active)
+            {
+                const BulletStateInfo& state = bulletStates.bullets[i];
+                bullet->SetPosition(state.x, state.y, state.z);
+                bullet->CGameObject::Update(0.0f);
+            }
+        }
+        lastBulletStateTick = bulletStates.tick;
+        hasBulletStateTick = true;
     }
 }
 
@@ -400,11 +477,19 @@ void CGameScene::AnimateObjects(float deltaTime)
 {
     if (sessionConfig.gameMode == EGameMode::FreeForAll)
     {
-        SC_PlayerStates states = {};
-        if (sessionConfig.copyPlayerStates && sessionConfig.copyPlayerStates(states))
+        LatestStates states = {};
+        if (sessionConfig.copyLatestStates)
         {
+            sessionConfig.copyLatestStates(states);
             ApplyStates(states);
         }
+        else if (sessionConfig.copyPlayerStates &&
+            sessionConfig.copyPlayerStates(states.playerStates))
+        {
+            states.playerStates.header.type = static_cast<uint8_t>(EPacketType::SC_PlayerStates);
+            ApplyStates(states);
+        }
+
         for (CPlayer* player : gameWorld.GetPlayers())
         {
             if (player)
@@ -412,6 +497,7 @@ void CGameScene::AnimateObjects(float deltaTime)
                 player->CGameObject::Update(deltaTime);
             }
         }
+
         // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
         if (localPlayer)
         {
@@ -1319,7 +1405,7 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
 
     gameWorld.HandleLocalPlayerFire(currentPlayerInput);
 
-    UpdateShieldVisual();
+    UpdateShieldVisual(localPlayer);
 
     if (camera)
     {
@@ -1327,9 +1413,9 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
     }
 }
 
-void CGameScene::UpdateShieldVisual()
+void CGameScene::UpdateShieldVisual(CPlayer* player)
 {
-    if (!localPlayer)
+    if (!player)
     {
         return;
     }
@@ -1337,22 +1423,24 @@ void CGameScene::UpdateShieldVisual()
     const XMFLOAT4 shieldColor(0.75f, 0.95f, 1.0f, 1.0f);
     const XMFLOAT4 shieldTailColor(0.55f, 0.75f, 0.85f, 1.0f);
 
-    const bool shieldEnabled = localPlayer->IsShieldEnabled();
+    const bool shieldEnabled = player->IsShieldEnabled();
 
-    if (playerTank)
+    if (player->GetPlayerType() == EPlayerType::Tank)
     {
-        playerTank->SetTankColor(shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
+        static_cast<CTankPlayer*>(player)->SetTankColor(
+            shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
     }
 
-    if (helicopterPlayer)
+    if (player->GetPlayerType() == EPlayerType::Helicopter)
     {
+        auto* helicopter = static_cast<CHelicopterPlayer*>(player);
         if (shieldEnabled)
         {
-            helicopterPlayer->SetHelicopterColor(shieldColor, shieldTailColor);
+            helicopter->SetHelicopterColor(shieldColor, shieldTailColor);
         }
         else
         {
-            helicopterPlayer->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
+            helicopter->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
         }
     }
 }

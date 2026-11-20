@@ -257,7 +257,82 @@ void CNetworkClient::UdpRecvLoop()
             }
 
             EnterCriticalSection(&m_stateCs);
-            m_latestStates.playerStates = states;
+
+            if (!m_hasTick[0] || states.tick > m_lastTick[0])
+            {
+                m_latestStates.playerStates = states;
+                m_lastTick[0] = states.tick;
+                m_hasTick[0] = true;
+            }
+
+            LeaveCriticalSection(&m_stateCs);
+        }
+        else if (header.type == (uint8_t)EPacketType::SC_EnemyStates)
+        {
+            if (received > (int)sizeof(SC_EnemyStates))
+            {
+                continue;
+            }
+
+            SC_EnemyStates states = {};
+            memcpy(&states, buf, received);
+
+            if (states.count > MAX_ENEMIES)
+            {
+                continue;
+            }
+
+            int expectedSize = STATE_PACKET_HEAD_SIZE +
+                states.count * sizeof(EnemyStateInfo);
+
+            if (received != expectedSize)
+            {
+                continue;
+            }
+
+            EnterCriticalSection(&m_stateCs);
+
+            if (!m_hasTick[1] || states.tick > m_lastTick[1])
+            {
+                m_latestStates.enemyStates = states;
+                m_lastTick[1] = states.tick;
+                m_hasTick[1] = true;
+            }
+
+            LeaveCriticalSection(&m_stateCs);
+        }
+        else if (header.type == (uint8_t)EPacketType::SC_BulletStates)
+        {
+            if (received > (int)sizeof(SC_BulletStates))
+            {
+                continue;
+            }
+
+            SC_BulletStates states = {};
+            memcpy(&states, buf, received);
+
+            if (states.count > MAX_BULLETS)
+            {
+                continue;
+            }
+
+            int expectedSize = STATE_PACKET_HEAD_SIZE +
+                states.count * sizeof(BulletStateInfo);
+
+            if (received != expectedSize)
+            {
+                continue;
+            }
+
+            EnterCriticalSection(&m_stateCs);
+
+            if (!m_hasTick[2] || states.tick > m_lastTick[2])
+            {
+                m_latestStates.bulletStates = states;
+                m_lastTick[2] = states.tick;
+                m_hasTick[2] = true;
+            }
+
             LeaveCriticalSection(&m_stateCs);
         }
     }

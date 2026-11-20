@@ -26,6 +26,7 @@ class CHelicopterPlayer;
 class CEnemy;
 struct SC_GameStart;
 struct SC_PlayerStates;
+struct LatestStates;
 
 // AnimateObjects 한 프레임 흐름:
 //   플레이어(이동/사격/Shield) -> 적 AI -> 총알 이동 -> 피격 판정 -> 폭발 연출 -> 승패 확인
@@ -49,7 +50,7 @@ public:
 
     void SendMyInput();
     // 네트워크 계층이 복사한 상태를 메인 스레드에서 반영한다.
-    void ApplyStates(const SC_PlayerStates& states);
+    void ApplyStates(const LatestStates& states);
     void AnimateObjects(float deltaTime)override;
 
     void OnResize(int width, int height)override;
@@ -136,6 +137,10 @@ private:
     std::array<CPlayer*, 4> m_playerById = {};
     uint32_t lastPlayerStateTick = 0;
     bool hasPlayerStateTick = false;
+    uint32_t lastEnemyStateTick = 0;
+    uint32_t lastBulletStateTick = 0;
+    bool hasEnemyStateTick = false;
+    bool hasBulletStateTick = false;
 
     // gameplay 객체(Player/Enemy/Bullet) 소유 및 시뮬레이션
     CGameWorld gameWorld;
@@ -176,7 +181,7 @@ private:
     void UpdateLocalPlayerFrame(float deltaTime);
 
     // Shield 상태를 기체 색으로 표시 (켜지면 두 기체 모두 같은 색)
-    void UpdateShieldVisual();
+    void UpdateShieldVisual(CPlayer* player);
 
     // 적 사망 시 흩어지는 폭발 블록 (표현 전용, 1초 뒤 삭제)
     struct FExplosionBlock

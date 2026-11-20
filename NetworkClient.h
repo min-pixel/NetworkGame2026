@@ -43,6 +43,9 @@ private:
     std::queue<NetEvent> m_eventQueue;
     LatestStates m_latestStates = {};
 
+    uint32_t m_lastTick[3] = {};
+    bool m_hasTick[3] = {};
+
     static DWORD WINAPI TcpRecvThread(LPVOID param);
     void TcpRecvLoop();
 

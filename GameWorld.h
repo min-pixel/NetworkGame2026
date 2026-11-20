@@ -63,6 +63,7 @@ public:
 
     // 좌클릭 중이면 발사 쿨타임(Helicopter 0.25초, Tank 0.8초)마다 총구 위치에서 기체 정면으로 한 발 발사한다.
     void HandleLocalPlayerFire(const PlayerInput& input);
+    void HandlePlayerFire(CPlayer* player, uint8_t ownerPlayerId, const PlayerInput& input);
 
     // 맵의 Spawn 정보대로 적을 만들어 지형 높이에 맞춰 놓는다.
     void SpawnEnemies(const CGameMap* gameMap);
