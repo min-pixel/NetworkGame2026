@@ -9,7 +9,7 @@ CPlayer::CPlayer(float moveSpeed, float fireCooldown, int health)
     moveSpeed(moveSpeed),
     fireCooldown(fireCooldown),
     fireTimer(0.0f),
-    health(health)
+    health(health+50000000)
 {
     SetColor(XMFLOAT4(0.2f, 0.4f, 1.0f, 1.0f));
 }
