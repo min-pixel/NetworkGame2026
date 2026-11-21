@@ -143,6 +143,59 @@ void CGameLoop::UpdateWorld(const CS_Input inputs[MAX_PLAYERS], std::vector<SC_E
     std::vector<CEnemy*> deadEnemies;
     m_world.CheckBulletHits(deadEnemies);
 
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        CPlayer* player = m_playerById[i];
+
+        if (!player || !player->IsDead() || player->IsGhost())
+        {
+            continue;
+        }
+
+        player->SetGhost(true);
+
+        XMFLOAT3 position = player->GetPosition();
+        SC_Event event = {};
+        event.header.size = sizeof(SC_Event);
+        event.header.type = (uint8_t)EPacketType::SC_Event;
+        event.eventType = (uint8_t)EEventType::PlayerDied;
+        event.subjectId = (uint8_t)i;
+        event.x = position.x;
+        event.y = position.y;
+        event.z = position.z;
+        outEvents.push_back(event);
+    }
+
+    std::vector<CEnemy*>& enemies = m_world.GetEnemies();
+
+    for (CEnemy* deadEnemy : deadEnemies)
+    {
+        for (int i = 0; i < (int)enemies.size(); ++i)
+        {
+            if (enemies[i] != deadEnemy)
+            {
+                continue;
+            }
+
+            XMFLOAT3 position = deadEnemy->GetPosition();
+            SC_Event event = {};
+            event.header.size = sizeof(SC_Event);
+            event.header.type = (uint8_t)EPacketType::SC_Event;
+            event.eventType = (uint8_t)EEventType::EnemyDied;
+            event.subjectId = (uint8_t)i;
+            event.x = position.x;
+            event.y = position.y;
+            event.z = position.z;
+            outEvents.push_back(event);
+            break;
+        }
+    }
+
+    for (const SC_Event& event : outEvents) printf("Æ½ %u: %s %d¹ø »ç¸Á\n", m_tick, event.eventType == (uint8_t)EEventType::PlayerDied ? "ÇÃ·¹ÀÌ¾î" : "Àû", event.subjectId);
+
+
+
+
     if (!deadEnemies.empty()) printf("Æ½ %u: Àû %d¸¶¸® »ç¸Á\n", m_tick, (int)deadEnemies.size());
 
 }
@@ -246,7 +299,9 @@ int CGameLoop::FillPlayerStates(SC_PlayerStates& out)
         XMFLOAT3 position = player->GetPosition();
         PlayerStateInfo& info = out.players[out.count];
         info.playerId = (uint8_t)i;
-        info.state = (uint8_t)EPlayerState::Alive;
+        //info.state = (uint8_t)EPlayerState::Alive;
+        info.state = (uint8_t)(player->IsGhost() ? EPlayerState::Ghost : EPlayerState::Alive);
+        
         info.shieldEnabled = player->IsShieldEnabled() ? 1 : 0;
         info.health = (uint8_t)player->GetHealth();
         info.x = position.x;
