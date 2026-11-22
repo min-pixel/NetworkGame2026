@@ -242,6 +242,8 @@ void CGameLoop::RunTick()
     std::vector<SC_Event> events;
     UpdateWorld(inputs, events);
 
+    SendEvents(events);
+
     SendStates();
 }
 
@@ -381,4 +383,15 @@ int CGameLoop::FillBulletStates(SC_BulletStates& out)
     int bytes = STATE_PACKET_HEAD_SIZE + (int)sizeof(BulletStateInfo) * out.count;
     out.header.size = (uint16_t)bytes;
     return bytes;
+}
+
+void CGameLoop::SendEvents(const std::vector<SC_Event>& events)
+{
+    for (const SC_Event& event : events)
+    {
+        m_server->SendToAll((const char*)&event, sizeof(event));
+
+        printf("틱 %u: %s %d번 사망 전송\n", m_tick, event.eventType == (uint8_t)EEventType::PlayerDied ? "플레이어" : "적", event.subjectId);
+
+    }
 }

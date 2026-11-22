@@ -32,6 +32,9 @@ public:
 
     int FillBulletStates(SC_BulletStates& out);
 
+    void SendEvents(const std::vector<SC_Event>& events);
+
+
 private:
     CGameServer* m_server;
     CTerrainGameMap* m_map = nullptr;
