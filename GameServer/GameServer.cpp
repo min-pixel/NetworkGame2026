@@ -225,6 +225,9 @@ void CGameServer::UdpRecvLoop()
             continue;
         }
 
+        //printf("%d번 입력 순번 %u 앞뒤 %d 좌우 %d 카메라 %.1f 발사 %d 쉴드 %d\n", packet.playerId, packet.sequence, packet.moveForward, packet.moveRight, packet.cameraYaw, packet.fire, packet.shieldPressCount);
+
+
         EnterCriticalSection(&m_inputLock);
 
         InputSlot& slot = m_inputs[packet.playerId];
@@ -236,12 +239,14 @@ void CGameServer::UdpRecvLoop()
                 slot.addr = from;
                 slot.hasAddr = true;
                 //printf("%d번 UDP 주소 등록\n", packet.playerId);
+                
             }
 
             if (slot.addr.sin_addr.s_addr == from.sin_addr.s_addr && slot.addr.sin_port == from.sin_port)
             {
                 slot.input = packet;
                 slot.lastSequence = packet.sequence;
+                //if (packet.sequence % 30 == 0) printf("%d번 입력 순번 %u 앞뒤 %d 좌우 %d 카메라 %.1f\n", packet.playerId, packet.sequence, packet.moveForward, packet.moveRight, packet.cameraYaw);
             }
         }
 
@@ -316,17 +321,34 @@ bool CGameServer::TryStartGame()
 
     if (!m_inGame)
     {
+        int count = 0;
+
         for (int i = 0; i < MAX_PLAYERS; ++i)
         {
             if (m_seats[i].used)
             {
-                start = true;
+                ++count;
             }
         }
 
+        start = (count >= 1);
         m_inGame = start;
     }
 
     LeaveCriticalSection(&m_seatLock);
     return start;
+}
+
+void CGameServer::ClearInputs()
+{
+    EnterCriticalSection(&m_inputLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        m_inputs[i].input.moveForward = 0;
+        m_inputs[i].input.moveRight = 0;
+        m_inputs[i].input.fire = 0;
+    }
+
+    LeaveCriticalSection(&m_inputLock);
 }

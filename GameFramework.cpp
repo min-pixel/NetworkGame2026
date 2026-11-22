@@ -2,7 +2,7 @@
 
 #include "stdafx.h"
 #include "GameFramework.h"
-
+#include "NetworkClient.h"
 #include "GameScene.h"
 #include "StartScene.h"
 #include "MapSelectScene.h"
@@ -11,6 +11,7 @@
 #include "GameSessionConfig.h"
 
 #include <random>
+#include <cstdio>
 
 namespace
 {
@@ -225,6 +226,86 @@ void CGameFramework::ProcessInput()
     }
 }
 
+void CGameFramework::ProcessNetEvents()
+{
+    if (m_networkClient == nullptr || scene == nullptr)
+    {
+        return;
+    }
+
+    std::vector<NetEvent> events;
+    m_networkClient->PopEvents(events);
+    ESceneType nextGameScene = ESceneType::None;
+
+    for (int i = 0; i < (int)events.size(); i++)
+    {
+        if (events[i].type == EPacketType::SC_ConnectResult)
+        {
+            if (events[i].connectResult.accepted == 1)
+            {
+                m_networkClient->SetMyPlayerId(events[i].connectResult.playerId);
+                char message[128];
+                sprintf_s(message, "[CLIENT] ACCEPTED: PlayerId=%u\n",
+                    (unsigned)m_networkClient->GetMyPlayerId());
+
+                OutputDebugStringA(message);
+            }
+            else
+            {
+                OutputDebugStringA("[CLIENT] REJECTED\n");
+            }
+        }
+
+        if (events[i].type == EPacketType::SC_GameStart)
+        {
+            if (events[i].gameStart.mapNumber >= 1 &&
+                events[i].gameStart.mapNumber <= 3 &&
+                events[i].gameStart.playerCount >= 2 &&
+                events[i].gameStart.playerCount <= MAX_PLAYERS)
+            {
+                m_gameStart = events[i].gameStart;
+                m_hasGameStart = true;
+
+                m_gameResult = {};
+                m_hasGameResult = false;
+
+                if (m_gameStart.mapNumber == 1)
+                {
+                    nextGameScene = ESceneType::GameMap1;
+                }
+                else if (m_gameStart.mapNumber == 2)
+                {
+                    nextGameScene = ESceneType::GameMap2;
+                }
+                else if (m_gameStart.mapNumber == 3)
+                {
+                    nextGameScene = ESceneType::GameMap3;
+                }
+            }
+        }
+        
+        if (events[i].type == EPacketType::SC_GameResult)
+        {
+            m_gameResult = events[i].gameResult;
+            m_hasGameResult = true;
+
+            char message[128];
+            sprintf_s(message, "[CLIENT] GAME RESULT: winner=%u\n",
+                (unsigned)m_gameResult.winnerPlayerId);
+
+            OutputDebugStringA(message);
+        }
+
+
+        scene->OnNetEvent(events[i]);
+    }
+
+    if (nextGameScene != ESceneType::None)
+    {
+        ChangeScene(nextGameScene, true);
+    }
+}
+
 void CGameFramework::AnimateObjects()
 {
     if (scene)
@@ -242,7 +323,29 @@ void CGameFramework::FrameAdvance()
 
     gameTimer.Tick(0.0f);
 
+    ProcessNetEvents();
     ProcessInput();
+
+    if (m_networkClient != nullptr &&
+        m_networkClient->GetMyPlayerId() != INVALID_PLAYER_ID &&
+        scene != nullptr &&
+        (currentSceneType == ESceneType::GameMap1 ||
+            currentSceneType == ESceneType::GameMap2 ||
+            currentSceneType == ESceneType::GameMap3))
+    {
+        m_inputSendElapsed += gameTimer.GetTimeElapsed();
+
+        if (m_inputSendElapsed >= 1.0f / TICK_RATE)
+        {
+            m_inputSendElapsed -= 1.0f / TICK_RATE;
+            scene->SendMyInput();
+        }
+    }
+    else
+    {
+        m_inputSendElapsed = 0.0f;
+    }
+
     AnimateObjects();
 
     CheckSceneChange();
@@ -1020,6 +1123,29 @@ bool CGameFramework::CreateSceneDirectResources()
 
 void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources)
 {
+    if (nextScene == ESceneType::GameMap1 ||
+        nextScene == ESceneType::GameMap2 ||
+        nextScene == ESceneType::GameMap3)
+    {
+        if (!m_hasGameStart || m_networkClient == nullptr)
+        {
+            return;
+        }
+
+        if (m_gameStart.mapNumber == 1)
+        {
+            nextScene = ESceneType::GameMap1;
+        }
+        else if (m_gameStart.mapNumber == 2)
+        {
+            nextScene = ESceneType::GameMap2;
+        }
+        else
+        {
+            nextScene = ESceneType::GameMap3;
+        }
+    }
+
     WaitForGpuComplete();
 
     if (scene)
@@ -1040,28 +1166,67 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
         break;
 
     case ESceneType::GameMap1:
-    {
-        GameSessionConfig config;
-        config.mapNumber = 1;
-        config.playerType = GetRandomPlayerType();
-        scene = new CGameScene(config);
-        break;
-    }
-
     case ESceneType::GameMap2:
-    {
-        GameSessionConfig config;
-        config.mapNumber = 2;
-        config.playerType = GetRandomPlayerType();
-        scene = new CGameScene(config);
-        break;
-    }
-
     case ESceneType::GameMap3:
     {
         GameSessionConfig config;
-        config.mapNumber = 3;
-        config.playerType = GetRandomPlayerType();
+
+        config.mapNumber = m_gameStart.mapNumber;
+        config.myPlayerId = m_networkClient->GetMyPlayerId();
+        config.playerCount = m_gameStart.playerCount;
+        config.playerType = (EPlayerType)m_gameStart.players[0].playerType;
+
+        for (int i = 0; i < config.playerCount; i++)
+        {
+            config.playerIds[i] = m_gameStart.players[i].playerId;
+
+            config.playerStartPositions[i] = DirectX::XMFLOAT3(
+                m_gameStart.players[i].x,
+                m_gameStart.players[i].y,
+                m_gameStart.players[i].z
+            );
+        }
+
+        config.sendInput = [this](int8_t moveForward, int8_t moveRight,
+            float cameraYaw, uint8_t fire, uint8_t shieldPressCount)
+            {
+                if (m_networkClient != nullptr)
+                {
+                    m_networkClient->SendInput(
+                        moveForward, moveRight, cameraYaw, fire, shieldPressCount);
+                }
+            };
+
+        config.copyPlayerStates = [this](SC_PlayerStates& outStates) -> bool
+            {
+                if (m_networkClient == nullptr)
+                {
+                    return false;
+                }
+
+                LatestStates latest = {};
+                m_networkClient->CopyLatestStates(latest);
+
+                if (latest.playerStates.header.type !=
+                    (uint8_t)EPacketType::SC_PlayerStates ||
+                    latest.playerStates.count == 0)
+                {
+                    return false;
+                }
+
+                outStates = latest.playerStates;
+                return true;
+            };
+
+
+        config.copyLatestStates = [this](LatestStates& outStates)
+            {
+                if (m_networkClient != nullptr)
+                {
+                    m_networkClient->CopyLatestStates(outStates);
+                }
+            };
+
         scene = new CGameScene(config);
         break;
     }
@@ -1116,3 +1281,9 @@ void CGameFramework::CheckSceneChange()
 
     ChangeScene(requested, true);
 }
+
+void CGameFramework::SetNetworkClient(CNetworkClient* client)
+{
+    m_networkClient = client;
+}
+

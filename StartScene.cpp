@@ -6,6 +6,7 @@
 #include "Camera.h"
 #include "Mesh.h"
 #include "Object.h"
+#include "NetworkClient.h"
 
 CStartScene::CStartScene()
 {
@@ -647,4 +648,31 @@ void CStartScene::ReleaseExplosionBlocks()
     }
 
     explosionBlocks.clear();
+}
+
+void CStartScene::OnNetEvent(const NetEvent& event)
+{
+    if (event.type != EPacketType::SC_ConnectResult)
+    {
+        return;
+    }
+
+    if (event.connectResult.accepted == 1)
+    {
+        requestedScene = ESceneType::MapSelect;
+        return;
+    }
+
+    if (event.connectResult.rejectReason == (uint8_t)ERejectReason::ServerFull)
+    {
+        MessageBoxA(NULL, "서버에 빈 자리가 없습니다.", "접속 거절", MB_OK);
+    }
+    else if (event.connectResult.rejectReason == (uint8_t)ERejectReason::AlreadyStarted)
+    {
+        MessageBoxA(NULL, "이미 게임이 진행 중입니다.", "접속 거절", MB_OK);
+    }
+    else
+    {
+        MessageBoxA(NULL, "서버 접속이 거절되었습니다.", "접속 거절", MB_OK);
+    }
 }

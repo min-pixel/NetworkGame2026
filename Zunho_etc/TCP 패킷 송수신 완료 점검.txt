@@ -1,0 +1,39 @@
+TCP 패킷 송수신 완료 점검
+
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+PS C:\WINDOWS\System32> $server = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 9000)
+PS C:\WINDOWS\System32> $server.Start()
+PS C:\WINDOWS\System32> Write-Host "서버 대기 중"
+서버 대기 중
+PS C:\WINDOWS\System32> $client = $server.AcceptTcpClient()
+
+----
+사이에 
+DirectProject2026v1.cpp
+#include "NetworkClient.h"
+
+UNREFERENCED_PARAMETER(hPrevInstance);
+UNREFERENCED_PARAMETER(lpCmdLine);
+
+CNetworkClient client;
+
+if (client.Connect("127.0.0.1"))
+{
+    MessageBoxA(NULL, "TCP 접속 성공", "Connect 테스트", MB_OK);
+}
+else
+{
+    MessageBoxA(NULL, "TCP 접속 실패", "Connect 테스트", MB_OK);
+}
+
+return 0;
+---- 
+
+PS C:\WINDOWS\System32> Write-Host "클라이언트 연결 성공"
+클라이언트 연결 성공
+PS C:\WINDOWS\System32> $client.Close()
+PS C:\WINDOWS\System32> $server.Stop()
+
+
