@@ -88,6 +88,9 @@ public:
     std::vector<CBullet*>& GetBullets();
     const std::vector<CBullet*>& GetBullets() const;
 
+    // 생존자 수를 세고 마지막으로 찾은 생존자를 돌려준다. 없으면 nullptr.
+    int CountAlivePlayers(CPlayer*& outLastAlive) const;
+
     // EliminateAll: 적 전멸 = Victory, Local Player 사망 = Defeat
     void UpdateGameResult(EGameMode gameMode);
     EGameResult GetGameResult() const;
