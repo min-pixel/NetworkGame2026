@@ -63,6 +63,8 @@ public:
     bool Connect(const char* serverIp);
     bool StartReceive();
 
+    bool SendReady();
+
     void SendInput(int8_t moveForward, int8_t moveRight, float cameraYaw, uint8_t fire, uint8_t shieldPressCount);
 
     void SetMyPlayerId(uint8_t playerId);

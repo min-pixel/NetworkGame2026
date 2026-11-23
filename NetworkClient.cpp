@@ -409,6 +409,20 @@ void CNetworkClient::CopyLatestStates(LatestStates& states)
     LeaveCriticalSection(&m_stateCs);
 }
 
+bool CNetworkClient::SendReady()
+{
+    if (m_tcpSock == INVALID_SOCKET || m_myPlayerId == INVALID_PLAYER_ID)
+    {
+        return false;
+    }
+
+    CS_Ready packet = {};
+    packet.header.size = sizeof(packet);
+    packet.header.type = (uint8_t)EPacketType::CS_Ready;
+
+    return SendAll(m_tcpSock, (const char*)&packet, sizeof(packet));
+}
+
 void CNetworkClient::SetMyPlayerId(uint8_t playerId)
 {
     m_myPlayerId = playerId;
