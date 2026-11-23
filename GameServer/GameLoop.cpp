@@ -244,6 +244,14 @@ void CGameLoop::RunTick()
 
     SendEvents(events);
 
+    uint8_t winnerId = INVALID_PLAYER_ID;
+    IsGameOver(winnerId);
+
+    if (m_tick % TICK_RATE == 0)
+    {
+        printf("틱 %u: 게임 끝 조건 (승자 %d)\n", m_tick, winnerId);
+    }
+
     SendStates();
 }
 
@@ -394,4 +402,36 @@ void CGameLoop::SendEvents(const std::vector<SC_Event>& events)
         printf("틱 %u: %s %d번 사망 전송\n", m_tick, event.eventType == (uint8_t)EEventType::PlayerDied ? "플레이어" : "적", event.subjectId);
 
     }
+}
+
+
+bool CGameLoop::IsGameOver(uint8_t& outWinnerId)
+{
+    int aliveCount = 0;
+    outWinnerId = INVALID_PLAYER_ID;
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        CPlayer* player = m_playerById[i];
+
+        if (!player || player->IsDead() || player->IsGhost())
+        {
+            continue;
+        }
+
+        ++aliveCount;
+        outWinnerId = (uint8_t)i;
+    }
+
+    if (aliveCount > 1)
+    {
+        return false;
+    }
+
+    if (aliveCount == 0)
+    {
+        outWinnerId = INVALID_PLAYER_ID;
+    }
+
+    return true;
 }

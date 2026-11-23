@@ -34,6 +34,8 @@ public:
 
     void SendEvents(const std::vector<SC_Event>& events);
 
+    bool IsGameOver(uint8_t& outWinnerId);
+
 
 private:
     CGameServer* m_server;
