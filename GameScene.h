@@ -49,6 +49,7 @@ public:
     bool ProcessInput(UCHAR* keyBuffer)override;
 
     void SendMyInput();
+    void OnNetEvent(const NetEvent& event);
     // 네트워크 계층이 복사한 상태를 메인 스레드에서 반영한다.
     void ApplyStates(const LatestStates& states);
     void AnimateObjects(float deltaTime)override;

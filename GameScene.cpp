@@ -352,6 +352,52 @@ void CGameScene::UpdatePlayerInput()
     pendingShieldTogglePressed = false;
 }
 
+void CGameScene::OnNetEvent(const NetEvent& event)
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll ||
+        event.type != EPacketType::SC_Event)
+    {
+        return;
+    }
+
+    const SC_Event& death = event.gameEvent;
+    if (!std::isfinite(death.x) || !std::isfinite(death.y) || !std::isfinite(death.z))
+    {
+        return;
+    }
+
+    switch (static_cast<EEventType>(death.eventType))
+    {
+    case EEventType::PlayerDied:
+    {
+        if (death.subjectId >= m_playerById.size() || !m_playerById[death.subjectId])
+        {
+            return;
+        }
+        CPlayer* player = m_playerById[death.subjectId];
+        player->SetHealth(0);
+        player->SetGhost(true);
+        UpdateShieldVisual(player);
+        break;
+    }
+    case EEventType::EnemyDied:
+    {
+        auto& enemies = gameWorld.GetEnemies();
+        if (death.subjectId >= enemies.size() || !enemies[death.subjectId])
+        {
+            return;
+        }
+        // enemyIndex가 바뀌지 않도록 목록의 자리는 유지한다.
+        enemies[death.subjectId]->SetActive(false);
+        break;
+    }
+    default:
+        return;
+    }
+
+    StartEnemyExplosion(XMFLOAT3(death.x, death.y, death.z));
+}
+
 void CGameScene::ApplyStates(const LatestStates& latest)
 {
     if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer)
@@ -379,6 +425,12 @@ void CGameScene::ApplyStates(const LatestStates& latest)
 
             CPlayer* player = m_playerById[state.playerId];
             if (!player)
+            {
+                continue;
+            }
+
+            // 같은 경기의 사망은 확정이다. 늦게 온 생존 상태로 되돌리지 않는다.
+            if (player->IsGhost() && state.state == static_cast<uint8_t>(EPlayerState::Alive))
             {
                 continue;
             }
@@ -497,6 +549,8 @@ void CGameScene::AnimateObjects(float deltaTime)
                 player->CGameObject::Update(deltaTime);
             }
         }
+
+        UpdateEnemyExplosions(deltaTime);
 
         // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
         if (localPlayer)
