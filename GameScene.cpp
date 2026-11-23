@@ -11,6 +11,9 @@
 #include "Bullet.h"
 
 #include <algorithm>
+#include <stdexcept>
+
+#include "NetworkClient.h"
 
 #include "GameMap.h"
 
@@ -68,11 +71,60 @@ CGameScene::CGameScene(const GameSessionConfig& config)
     thirdPersonCameraPitch(20.0f)
 {
     sessionConfig = config;
+    if (config.playerCount > 0 && config.playerCount <= config.playerIds.size() &&
+        config.myPlayerId < config.playerIds.size())
+    {
+        const auto end = config.playerIds.begin() + config.playerCount;
+        if (std::find(config.playerIds.begin(), end, config.myPlayerId) != end)
+        {
+            sessionConfig.gameMode = EGameMode::FreeForAll;
+        }
+    }
 
     mouseCenter.x = 0;
     mouseCenter.y = 0;
 
     ZeroMemory(inputBuffer, sizeof(inputBuffer));
+}
+
+CGameScene::CGameScene(const SC_GameStart& gameStart, uint8_t myPlayerId)
+    : CGameScene(GameSessionConfig{})
+{
+    if (gameStart.mapNumber < 1 || gameStart.mapNumber > 3 ||
+        gameStart.playerCount == 0 || gameStart.playerCount > MAX_PLAYERS ||
+        myPlayerId >= MAX_PLAYERS)
+    {
+        throw std::invalid_argument("Invalid game start");
+    }
+
+    sessionConfig.mapNumber = gameStart.mapNumber;
+    sessionConfig.gameMode = EGameMode::FreeForAll;
+    sessionConfig.myPlayerId = myPlayerId;
+    sessionConfig.playerCount = gameStart.playerCount;
+    sessionConfig.playerType = static_cast<EPlayerType>(gameStart.players[0].playerType);
+
+    std::array<bool, MAX_PLAYERS> seenIds = {};
+    for (size_t i = 0; i < gameStart.playerCount; ++i)
+    {
+        const PlayerStartInfo& player = gameStart.players[i];
+        const EPlayerType type = static_cast<EPlayerType>(player.playerType);
+        if (player.playerId >= MAX_PLAYERS || seenIds[player.playerId] ||
+            (type != EPlayerType::Tank && type != EPlayerType::Helicopter) ||
+            !std::isfinite(player.x) || !std::isfinite(player.y) || !std::isfinite(player.z))
+        {
+            throw std::invalid_argument("Invalid player start");
+        }
+
+        seenIds[player.playerId] = true;
+        sessionConfig.playerIds[i] = player.playerId;
+        sessionConfig.playerTypes[i] = type;
+        sessionConfig.playerStartPositions[i] = XMFLOAT3(player.x, player.y, player.z);
+    }
+
+    if (!seenIds[myPlayerId])
+    {
+        throw std::invalid_argument("Local player missing from game start");
+    }
 }
 
 CGameScene::~CGameScene()
@@ -87,7 +139,41 @@ void CGameScene::CreateLocalPlayer()
         return;
     }
 
-    CPlayer* createdPlayer = gameWorld.SpawnPlayer(sessionConfig.playerType, gameMap->GetPlayerStartPosition(), gameMap);
+    CPlayer* createdPlayer = nullptr;
+    if (sessionConfig.gameMode == EGameMode::FreeForAll)
+    {
+        if (sessionConfig.myPlayerId >= m_playerById.size() ||
+            sessionConfig.playerCount > sessionConfig.playerIds.size())
+        {
+            return;
+        }
+
+        for (size_t i = 0; i < sessionConfig.playerCount; ++i)
+        {
+            const uint8_t playerId = sessionConfig.playerIds[i];
+            if (playerId >= m_playerById.size() || m_playerById[playerId])
+            {
+                continue;
+            }
+
+            const EPlayerType playerType = sessionConfig.playerTypes[i] == EPlayerType::None
+                ? sessionConfig.playerType : sessionConfig.playerTypes[i];
+            // 서버에서 받은 시작 좌표는 지형 높이로 다시 보정하지 않는다.
+            m_playerById[playerId] = gameWorld.SpawnPlayer(
+                playerType, sessionConfig.playerStartPositions[i], nullptr, playerId);
+        }
+
+        createdPlayer = m_playerById[sessionConfig.myPlayerId];
+    }
+    else
+    {
+        createdPlayer = gameWorld.SpawnPlayer(
+            sessionConfig.playerType, gameMap->GetPlayerStartPosition(), gameMap);
+        if (createdPlayer)
+        {
+            m_playerById[createdPlayer->playerId] = createdPlayer;
+        }
+    }
 
     if (!createdPlayer)
     {
@@ -173,6 +259,16 @@ void CGameScene::ReleaseObjects()
     }
 
     gameWorld.Clear();
+    m_playerById.fill(nullptr);
+    hasPlayerStateTick = false;
+    hasEnemyStateTick = false;
+    hasBulletStateTick = false;
+    shieldPressCount = 0;
+    currentPlayerInput = {};
+    pendingShieldTogglePressed = false;
+    pendingLookYawDelta = 0.0f;
+    pendingLookPitchDelta = 0.0f;
+    ZeroMemory(inputBuffer, sizeof(inputBuffer));
 
     localPlayer = nullptr;
 
@@ -198,8 +294,24 @@ bool CGameScene::ProcessInput(UCHAR* keyBuffer)
     }
 
     UpdatePlayerInput();
+    ApplyThirdPersonLookInput();
 
     return true;
+}
+
+void CGameScene::SendMyInput()
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer || !sessionConfig.sendInput)
+    {
+        return;
+    }
+
+    sessionConfig.sendInput(
+        static_cast<int8_t>(currentPlayerInput.moveForward),
+        static_cast<int8_t>(currentPlayerInput.moveRight),
+        thirdPersonCameraYaw,
+        currentPlayerInput.fire && !localPlayer->IsGhost() ? 1 : 0,
+        shieldPressCount);
 }
 
 void CGameScene::UpdatePlayerInput()
@@ -240,8 +352,160 @@ void CGameScene::UpdatePlayerInput()
     pendingShieldTogglePressed = false;
 }
 
+void CGameScene::ApplyStates(const LatestStates& latest)
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer)
+    {
+        return;
+    }
+
+    const SC_PlayerStates& states = latest.playerStates;
+    const uint32_t playerElapsed = states.tick - lastPlayerStateTick;
+    if (states.header.type == static_cast<uint8_t>(EPacketType::SC_PlayerStates) &&
+        states.count <= MAX_PLAYERS &&
+        (!hasPlayerStateTick || (playerElapsed != 0 && playerElapsed < 0x80000000u)))
+    {
+
+        bool appliedState = false;
+        for (size_t i = 0; i < states.count; ++i)
+        {
+            const PlayerStateInfo& state = states.players[i];
+            if (state.playerId >= m_playerById.size() ||
+            (state.state != static_cast<uint8_t>(EPlayerState::Alive) &&
+            state.state != static_cast<uint8_t>(EPlayerState::Ghost)))
+            {
+                continue;
+            }
+
+            CPlayer* player = m_playerById[state.playerId];
+            if (!player)
+            {
+                continue;
+            }
+
+            player->SetHealth(state.health);
+            player->SetGhost(state.state == static_cast<uint8_t>(EPlayerState::Ghost));
+            player->SetShieldEnabled(state.shieldEnabled != 0);
+            UpdateShieldVisual(player);
+            appliedState = true;
+
+            if (!std::isfinite(state.x) || !std::isfinite(state.y) ||
+            !std::isfinite(state.z) || !std::isfinite(state.yaw))
+            {
+                continue;
+            }
+
+            player->SetPosition(state.x, state.y, state.z);
+            player->SetRotation(0.0f, state.yaw, 0.0f);
+            // 렌더링에 사용하는 기체와 부품의 변환을 즉시 갱신한다.
+            player->CGameObject::Update(0.0f);
+        }
+
+        if (appliedState)
+        {
+            lastPlayerStateTick = states.tick;
+            hasPlayerStateTick = true;
+        }
+    }
+
+    const SC_EnemyStates& enemyStates = latest.enemyStates;
+    const uint32_t enemyElapsed = enemyStates.tick - lastEnemyStateTick;
+    if (enemyStates.header.type == static_cast<uint8_t>(EPacketType::SC_EnemyStates) &&
+        enemyStates.count <= MAX_ENEMIES &&
+        (!hasEnemyStateTick || (enemyElapsed != 0 && enemyElapsed < 0x80000000u)))
+    {
+        auto& enemies = gameWorld.GetEnemies();
+        for (size_t i = 0; i < enemyStates.count; ++i)
+        {
+            const EnemyStateInfo& state = enemyStates.enemies[i];
+            if (state.enemyIndex >= enemies.size() || !enemies[state.enemyIndex] ||
+                !std::isfinite(state.x) || !std::isfinite(state.y) ||
+                !std::isfinite(state.z) || !std::isfinite(state.yaw))
+            {
+                continue;
+            }
+            CEnemy* enemy = enemies[state.enemyIndex];
+            if (!enemy->IsActive() || enemy->IsDead())
+            {
+                continue;
+            }
+            enemy->SetPosition(state.x, state.y, state.z);
+            enemy->SetRotation(0.0f, state.yaw, 0.0f);
+            enemy->CGameObject::Update(0.0f);
+        }
+        lastEnemyStateTick = enemyStates.tick;
+        hasEnemyStateTick = true;
+    }
+
+    const SC_BulletStates& bulletStates = latest.bulletStates;
+    const uint32_t bulletElapsed = bulletStates.tick - lastBulletStateTick;
+    if (bulletStates.header.type == static_cast<uint8_t>(EPacketType::SC_BulletStates) &&
+        bulletStates.count <= MAX_BULLETS &&
+        (!hasBulletStateTick || (bulletElapsed != 0 && bulletElapsed < 0x80000000u)))
+    {
+        for (size_t i = 0; i < bulletStates.count; ++i)
+        {
+            const BulletStateInfo& state = bulletStates.bullets[i];
+            if (!std::isfinite(state.x) || !std::isfinite(state.y) || !std::isfinite(state.z))
+            {
+                return;
+            }
+        }
+        auto& bullets = gameWorld.GetBullets();
+        for (size_t i = 0; i < bullets.size(); ++i)
+        {
+            CBullet* bullet = bullets[i];
+            if (!bullet)
+            {
+                continue;
+            }
+            const bool active = i < bulletStates.count;
+            bullet->SetActive(active);
+            if (active)
+            {
+                const BulletStateInfo& state = bulletStates.bullets[i];
+                bullet->SetPosition(state.x, state.y, state.z);
+                bullet->CGameObject::Update(0.0f);
+            }
+        }
+        lastBulletStateTick = bulletStates.tick;
+        hasBulletStateTick = true;
+    }
+}
+
 void CGameScene::AnimateObjects(float deltaTime)
 {
+    if (sessionConfig.gameMode == EGameMode::FreeForAll)
+    {
+        LatestStates states = {};
+        if (sessionConfig.copyLatestStates)
+        {
+            sessionConfig.copyLatestStates(states);
+            ApplyStates(states);
+        }
+        else if (sessionConfig.copyPlayerStates &&
+            sessionConfig.copyPlayerStates(states.playerStates))
+        {
+            states.playerStates.header.type = static_cast<uint8_t>(EPacketType::SC_PlayerStates);
+            ApplyStates(states);
+        }
+
+        for (CPlayer* player : gameWorld.GetPlayers())
+        {
+            if (player)
+            {
+                player->CGameObject::Update(deltaTime);
+            }
+        }
+
+        // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
+        if (localPlayer)
+        {
+            UpdateThirdPersonCamera(localPlayer->GetPosition(), GetCurrentThirdPersonCameraProfile());
+        }
+        return;
+    }
+
     UpdateLocalPlayerFrame(deltaTime);
 
     gameWorld.UpdateEnemies(deltaTime, gameMap);
@@ -324,7 +588,14 @@ bool CGameScene::OnProcessingKeyboardMessage(HWND hWnd, UINT message, WPARAM wPa
 
         if (wParam == 'E' && !wasKeyDown)
         {
-            pendingShieldTogglePressed = true;
+            if (sessionConfig.gameMode == EGameMode::FreeForAll)
+            {
+                ++shieldPressCount;
+            }
+            else
+            {
+                pendingShieldTogglePressed = true;
+            }
             return true;
         }
     }
@@ -700,7 +971,7 @@ bool CGameScene::BuildDirectResources(ID3D12Device* device, ID3D12GraphicsComman
         return false;
     }
 
-    ApplyLocalPlayerDirectMeshes();
+    ApplyPlayerDirectMeshes();
 
     ApplyEnemyDirectMeshes();
 
@@ -821,9 +1092,12 @@ void CGameScene::RenderDirect(ID3D12GraphicsCommandList* commandList)
         gameMap->RenderDirect(commandList);
     }
 
-    if (IsVisible(localPlayer, worldFrustum))
+    for (CPlayer* player : gameWorld.GetPlayers())
     {
-        localPlayer->RenderDirect(commandList);
+        if (player && (player == localPlayer || !player->IsGhost()) && IsVisible(player, worldFrustum))
+        {
+            player->RenderDirect(commandList);
+        }
     }
 
     for (CEnemy* enemy : enemies)
@@ -1049,37 +1323,25 @@ void CGameScene::UpdateThirdPersonCamera(const XMFLOAT3& targetPosition, const T
     camera->SetUp(XMFLOAT3(0.0f, 1.0f, 0.0f));
 }
 
-void CGameScene::ApplyLocalPlayerDirectMeshes()
+void CGameScene::ApplyPlayerDirectMeshes()
 {
-    if (!localPlayer)
+    for (CPlayer* player : gameWorld.GetPlayers())
     {
-        return;
-    }
-
-    switch (gameWorld.GetLocalPlayerType())
-    {
-    case EPlayerType::Helicopter:
-    {
-        if (helicopterPlayer)
+        switch (player->GetPlayerType())
         {
-            ApplyHelicopterDirectMeshes(helicopterPlayer);
+        case EPlayerType::Helicopter:
+            ApplyHelicopterDirectMeshes(static_cast<CHelicopterPlayer*>(player));
+            break;
+
+        case EPlayerType::Tank:
+            static_cast<CTankPlayer*>(player)->ApplyTankDirectMeshes(
+                sharedDirectTankBodyMesh, sharedDirectTankTurretMesh,
+                sharedDirectTankBarrelMesh, sharedDirectTankTrackMesh);
+            break;
+
+        default:
+            break;
         }
-
-        break;
-    }
-
-    case EPlayerType::Tank:
-    {
-        if (playerTank)
-        {
-            playerTank->ApplyTankDirectMeshes(sharedDirectTankBodyMesh, sharedDirectTankTurretMesh, sharedDirectTankBarrelMesh, sharedDirectTankTrackMesh);
-        }
-
-        break;
-    }
-
-    default:
-        break;
     }
 }
 
@@ -1139,13 +1401,11 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
         return;
     }
 
-    ApplyThirdPersonLookInput();
-
     gameWorld.UpdateLocalPlayer(deltaTime, currentPlayerInput, thirdPersonCameraYaw, gameMap);
 
     gameWorld.HandleLocalPlayerFire(currentPlayerInput);
 
-    UpdateShieldVisual();
+    UpdateShieldVisual(localPlayer);
 
     if (camera)
     {
@@ -1153,9 +1413,9 @@ void CGameScene::UpdateLocalPlayerFrame(float deltaTime)
     }
 }
 
-void CGameScene::UpdateShieldVisual()
+void CGameScene::UpdateShieldVisual(CPlayer* player)
 {
-    if (!localPlayer)
+    if (!player)
     {
         return;
     }
@@ -1163,22 +1423,24 @@ void CGameScene::UpdateShieldVisual()
     const XMFLOAT4 shieldColor(0.75f, 0.95f, 1.0f, 1.0f);
     const XMFLOAT4 shieldTailColor(0.55f, 0.75f, 0.85f, 1.0f);
 
-    const bool shieldEnabled = localPlayer->IsShieldEnabled();
+    const bool shieldEnabled = player->IsShieldEnabled();
 
-    if (playerTank)
+    if (player->GetPlayerType() == EPlayerType::Tank)
     {
-        playerTank->SetTankColor(shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
+        static_cast<CTankPlayer*>(player)->SetTankColor(
+            shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
     }
 
-    if (helicopterPlayer)
+    if (player->GetPlayerType() == EPlayerType::Helicopter)
     {
+        auto* helicopter = static_cast<CHelicopterPlayer*>(player);
         if (shieldEnabled)
         {
-            helicopterPlayer->SetHelicopterColor(shieldColor, shieldTailColor);
+            helicopter->SetHelicopterColor(shieldColor, shieldTailColor);
         }
         else
         {
-            helicopterPlayer->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
+            helicopter->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
         }
     }
 }

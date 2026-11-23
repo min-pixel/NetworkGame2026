@@ -24,6 +24,9 @@ class CHumanoidObject;
 class CGameMap;
 class CHelicopterPlayer;
 class CEnemy;
+struct SC_GameStart;
+struct SC_PlayerStates;
+struct LatestStates;
 
 // AnimateObjects 한 프레임 흐름:
 //   플레이어(이동/사격/Shield) -> 적 AI -> 총알 이동 -> 피격 판정 -> 폭발 연출 -> 승패 확인
@@ -35,6 +38,8 @@ public:
 
     // config: 맵 번호, 기체 타입, 게임 규칙
     explicit CGameScene(const GameSessionConfig& config);
+    // 잘못된 시작 정보는 std::invalid_argument로 거절한다.
+    CGameScene(const SC_GameStart& gameStart, uint8_t myPlayerId);
 
     ~CGameScene()override;
 
@@ -42,6 +47,10 @@ public:
     void ReleaseObjects()override;
 
     bool ProcessInput(UCHAR* keyBuffer)override;
+
+    void SendMyInput();
+    // 네트워크 계층이 복사한 상태를 메인 스레드에서 반영한다.
+    void ApplyStates(const LatestStates& states);
     void AnimateObjects(float deltaTime)override;
 
     void OnResize(int width, int height)override;
@@ -103,6 +112,7 @@ private:
     float pendingLookPitchDelta = 0.0f;
 
     bool pendingShieldTogglePressed = false;
+    uint8_t shieldPressCount = 0;
 
     // 쌓아 둔 입력을 PlayerInput으로 묶고, 한 번만 쓰는 값은 비운다.
     void UpdatePlayerInput();
@@ -124,6 +134,13 @@ private:
 
     // 아래 Player 포인터들은 모두 gameWorld가 소유한 객체를 가리키는 비소유 포인터 (delete 금지)
     CPlayer* localPlayer = nullptr;
+    std::array<CPlayer*, 4> m_playerById = {};
+    uint32_t lastPlayerStateTick = 0;
+    bool hasPlayerStateTick = false;
+    uint32_t lastEnemyStateTick = 0;
+    uint32_t lastBulletStateTick = 0;
+    bool hasEnemyStateTick = false;
+    bool hasBulletStateTick = false;
 
     // gameplay 객체(Player/Enemy/Bullet) 소유 및 시뮬레이션
     CGameWorld gameWorld;
@@ -134,7 +151,7 @@ private:
 
     // World에 플레이어 생성을 요청하고, 타입에 맞는 비소유 포인터를 저장한다.
     void CreateLocalPlayer();
-    void ApplyLocalPlayerDirectMeshes();
+    void ApplyPlayerDirectMeshes();
     const ThirdPersonCameraProfile& GetCurrentThirdPersonCameraProfile() const;
 
     void UpdateMouseCenter();
@@ -164,7 +181,7 @@ private:
     void UpdateLocalPlayerFrame(float deltaTime);
 
     // Shield 상태를 기체 색으로 표시 (켜지면 두 기체 모두 같은 색)
-    void UpdateShieldVisual();
+    void UpdateShieldVisual(CPlayer* player);
 
     // 적 사망 시 흩어지는 폭발 블록 (표현 전용, 1초 뒤 삭제)
     struct FExplosionBlock
