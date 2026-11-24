@@ -256,6 +256,15 @@ void CGameFramework::ProcessNetEvents()
             }
         }
 
+        if (events[i].type == EPacketType::SC_LobbyState)
+        {
+            if (events[i].lobbyState.playerCount <= MAX_PLAYERS)
+            {
+                m_lobbyState = events[i].lobbyState;
+                m_hasLobbyState = true;
+            }
+        }
+
         if (events[i].type == EPacketType::SC_GameStart)
         {
             if (events[i].gameStart.mapNumber >= 1 &&
@@ -265,6 +274,7 @@ void CGameFramework::ProcessNetEvents()
             {
                 m_gameStart = events[i].gameStart;
                 m_hasGameStart = true;
+                m_hasLobbyState = false;
 
                 m_gameResult = {};
                 m_hasGameResult = false;
@@ -1252,6 +1262,15 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
     if (scene)
     {
         scene->SetNetworkClient(m_networkClient);
+
+        if (nextScene == ESceneType::MapSelect && m_hasLobbyState)
+        {
+            NetEvent lobbyEvent = {};
+            lobbyEvent.type = EPacketType::SC_LobbyState;
+            lobbyEvent.lobbyState = m_lobbyState;
+            scene->OnNetEvent(lobbyEvent);
+        }
+
         scene->BuildObjects(clientWidth, clientHeight);
     }
 

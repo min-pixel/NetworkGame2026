@@ -4,10 +4,12 @@
 #pragma once
 
 #include "SceneBase.h"
+#include "Protocol.h"
 
 class CCamera;
 class CBlockTextObject;
 class CDirectMesh;
+class CGameObject;
 class CNetworkClient;
 
 class CMapSelectScene : public CSceneBase
@@ -18,6 +20,8 @@ public:
 
     void BuildObjects(int clientWidth, int clientHeight) override;
     void SetNetworkClient(CNetworkClient* client) override;
+    void OnNetEvent(const NetEvent& event) override;
+    void SetLobbyState(const SC_LobbyState& state);
     void ReleaseObjects() override;
 
     bool ProcessInput(UCHAR* keyBuffer) override;
@@ -45,6 +49,8 @@ private:
     bool PickNumberTwo(int mouseX, int mouseY);
 
     void UpdateCameraShaderVariables(ID3D12GraphicsCommandList* commandList);
+    void BuildLobbyIndicators();
+    void UpdateLobbyIndicators();
     void UpdateReadyButtonColor();
 
 private:
@@ -58,7 +64,11 @@ private:
 
     CDirectMesh* sharedBlockMesh = nullptr;
 
+    CGameObject* lobbyIndicators[MAX_PLAYERS] = {};
+
     CNetworkClient* networkClient = nullptr;
+    SC_LobbyState lobbyState = {};
+    bool hasLobbyState = false;
     bool readySent = false;
 };
 
