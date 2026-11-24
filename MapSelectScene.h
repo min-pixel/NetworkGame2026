@@ -8,6 +8,7 @@
 class CCamera;
 class CBlockTextObject;
 class CDirectMesh;
+class CNetworkClient;
 
 class CMapSelectScene : public CSceneBase
 {
@@ -16,6 +17,7 @@ public:
     ~CMapSelectScene() override;
 
     void BuildObjects(int clientWidth, int clientHeight) override;
+    void SetNetworkClient(CNetworkClient* client) override;
     void ReleaseObjects() override;
 
     bool ProcessInput(UCHAR* keyBuffer) override;
@@ -43,6 +45,7 @@ private:
     bool PickNumberTwo(int mouseX, int mouseY);
 
     void UpdateCameraShaderVariables(ID3D12GraphicsCommandList* commandList);
+    void UpdateReadyButtonColor();
 
 private:
     int clientWidth = 0;
@@ -54,4 +57,8 @@ private:
     CBlockTextObject* numberTwo = nullptr;
 
     CDirectMesh* sharedBlockMesh = nullptr;
+
+    CNetworkClient* networkClient = nullptr;
+    bool readySent = false;
 };
+

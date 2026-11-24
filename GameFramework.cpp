@@ -1251,6 +1251,7 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
 
     if (scene)
     {
+        scene->SetNetworkClient(m_networkClient);
         scene->BuildObjects(clientWidth, clientHeight);
     }
 

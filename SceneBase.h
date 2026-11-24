@@ -23,11 +23,14 @@ enum class ESceneType
 // 씬을 바꾸고 싶으면 requestedScene에 다음 씬을 넣는다 (실제 전환은 프레임워크가 처리).
 struct NetEvent;
 
+class CNetworkClient;
+
 class CSceneBase
 {
 public:
     virtual ~CSceneBase() = default;
     virtual void OnNetEvent(const NetEvent& event) {}
+    virtual void SetNetworkClient(CNetworkClient* client) {}
     virtual void SendMyInput() {}
 
     // CPU 쪽 객체 생성 (GPU 리소스 생성은 BuildDirectResources)

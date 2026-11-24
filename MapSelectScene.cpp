@@ -6,6 +6,7 @@
 #include "Camera.h"
 #include "Mesh.h"
 #include "Object.h"
+#include "NetworkClient.h"
 
 #include <random>
 
@@ -32,6 +33,11 @@ void CMapSelectScene::BuildObjects(int width, int height)
         camera->SetUp(XMFLOAT3(0.0f, 1.0f, 0.0f));
         camera->SetLens(60.0f, 0.1f, 1000.0f);
     }
+}
+
+void CMapSelectScene::SetNetworkClient(CNetworkClient* client)
+{
+    networkClient = client;
 }
 
 void CMapSelectScene::ReleaseObjects()
@@ -119,30 +125,11 @@ bool CMapSelectScene::OnProcessingMouseMessage(HWND hWnd, UINT message, WPARAM w
 
         if (PickNumberOne(mouseX, mouseY))
         {
-            static std::mt19937 randomGenerator(std::random_device{}());
-
-            std::uniform_int_distribution<int>
-                mapDistribution(1, 3);
-
-            int randomMap = mapDistribution(randomGenerator);
-
-            switch (randomMap)
+            if (!readySent && networkClient != nullptr && networkClient->SendReady())
             {
-            case 1:
-                requestedScene = ESceneType::GameMap1;
-                break;
-
-            case 2:
-                requestedScene = ESceneType::GameMap2;
-                break;
-
-            case 3:
-                requestedScene = ESceneType::GameMap3;
-                break;
-
-            default:
-                requestedScene = ESceneType::GameMap1;
-                break;
+                readySent = true;
+                UpdateReadyButtonColor();
+                OutputDebugStringA("[CLIENT] CS_Ready sent\n");
             }
 
             return true;
@@ -172,6 +159,7 @@ bool CMapSelectScene::BuildDirectResources(ID3D12Device* device, ID3D12GraphicsC
 
     BuildNumberOne();
     BuildNumberTwo();
+    UpdateReadyButtonColor();
 
     return true;
 }
@@ -204,6 +192,26 @@ void CMapSelectScene::RenderDirect(ID3D12GraphicsCommandList* commandList)
     }
 }
 
+void CMapSelectScene::UpdateReadyButtonColor()
+{
+    if (!numberOne)
+    {
+        return;
+    }
+
+    XMFLOAT4 color = readySent
+        ? XMFLOAT4(0.2f, 0.9f, 0.3f, 1.0f)
+        : XMFLOAT4(0.3f, 0.8f, 1.0f, 1.0f);
+
+    for (CGameObject* block : numberOne->GetChildren())
+    {
+        if (block)
+        {
+            block->SetColor(color);
+        }
+    }
+}
+
 void CMapSelectScene::BuildNumberOne()
 {
     if (numberOne)
@@ -221,33 +229,31 @@ void CMapSelectScene::BuildNumberOne()
     numberOne->SetScale(0.13f, 0.13f, 0.13f);
 
     // Start
-
-    // S
     numberOne->AddBlock(-9.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-8.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-7.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-9.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(-7.0f, -21.0f, 0.0f);
     numberOne->AddBlock(-9.0f, -22.0f, 0.0f);
     numberOne->AddBlock(-8.0f, -22.0f, 0.0f);
     numberOne->AddBlock(-7.0f, -22.0f, 0.0f);
-    numberOne->AddBlock(-7.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-9.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-8.0f, -23.0f, 0.0f);
     numberOne->AddBlock(-9.0f, -24.0f, 0.0f);
-    numberOne->AddBlock(-8.0f, -24.0f, 0.0f);
     numberOne->AddBlock(-7.0f, -24.0f, 0.0f);
 
-    // T
     numberOne->AddBlock(-5.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-4.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-3.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(-4.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -22.0f, 0.0f);
     numberOne->AddBlock(-4.0f, -22.0f, 0.0f);
-    numberOne->AddBlock(-4.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -24.0f, 0.0f);
     numberOne->AddBlock(-4.0f, -24.0f, 0.0f);
+    numberOne->AddBlock(-3.0f, -24.0f, 0.0f);
 
-    // A
-    numberOne->AddBlock(-1.0f, -20.0f, 0.0f);
     numberOne->AddBlock(0.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(1.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-1.0f, -21.0f, 0.0f);
     numberOne->AddBlock(1.0f, -21.0f, 0.0f);
     numberOne->AddBlock(-1.0f, -22.0f, 0.0f);
@@ -258,25 +264,21 @@ void CMapSelectScene::BuildNumberOne()
     numberOne->AddBlock(-1.0f, -24.0f, 0.0f);
     numberOne->AddBlock(1.0f, -24.0f, 0.0f);
 
-    // R
     numberOne->AddBlock(3.0f, -20.0f, 0.0f);
     numberOne->AddBlock(4.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(5.0f, -20.0f, 0.0f);
     numberOne->AddBlock(3.0f, -21.0f, 0.0f);
     numberOne->AddBlock(5.0f, -21.0f, 0.0f);
     numberOne->AddBlock(3.0f, -22.0f, 0.0f);
-    numberOne->AddBlock(4.0f, -22.0f, 0.0f);
     numberOne->AddBlock(5.0f, -22.0f, 0.0f);
     numberOne->AddBlock(3.0f, -23.0f, 0.0f);
-    numberOne->AddBlock(4.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(5.0f, -23.0f, 0.0f);
     numberOne->AddBlock(3.0f, -24.0f, 0.0f);
-    numberOne->AddBlock(5.0f, -24.0f, 0.0f);
+    numberOne->AddBlock(4.0f, -24.0f, 0.0f);
 
-    // T
     numberOne->AddBlock(7.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(8.0f, -20.0f, 0.0f);
     numberOne->AddBlock(9.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(8.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(7.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(9.0f, -21.0f, 0.0f);
     numberOne->AddBlock(8.0f, -22.0f, 0.0f);
     numberOne->AddBlock(8.0f, -23.0f, 0.0f);
     numberOne->AddBlock(8.0f, -24.0f, 0.0f);
