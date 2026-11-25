@@ -36,7 +36,7 @@ public:
 
     bool IsGameOver(uint8_t& outWinnerId);
 
-
+    void SendResult(uint8_t winnerId);
 private:
     CGameServer* m_server;
     CTerrainGameMap* m_map = nullptr;

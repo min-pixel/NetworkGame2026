@@ -331,7 +331,7 @@ bool CGameServer::TryStartGame()
             }
         }
 
-        start = (count >= 2);
+        start = (count >= MIN_PLAYERS_TO_START);
         m_inGame = start;
     }
 

@@ -226,7 +226,15 @@ void CGameLoop::Run()
     while (true)
     {
         WaitNextTick();
-        RunTick();
+         RunTick();
+
+        uint8_t winnerId = INVALID_PLAYER_ID;
+
+        if (IsGameOver(winnerId))
+        {
+            SendResult(winnerId);
+            //break;
+        }
     }
 }
 
@@ -244,13 +252,8 @@ void CGameLoop::RunTick()
 
     SendEvents(events);
 
-    uint8_t winnerId = INVALID_PLAYER_ID;
-    IsGameOver(winnerId);
+   
 
-    if (m_tick % TICK_RATE == 0)
-    {
-        printf("틱 %u: 게임 끝 조건 (승자 %d)\n", m_tick, winnerId);
-    }
 
     SendStates();
 }
@@ -434,4 +437,16 @@ bool CGameLoop::IsGameOver(uint8_t& outWinnerId)
     }
 
     return true;
+}
+
+void CGameLoop::SendResult(uint8_t winnerId)
+{
+    SC_GameResult packet = {};
+    packet.header.size = sizeof(SC_GameResult);
+    packet.header.type = (uint8_t)EPacketType::SC_GameResult;
+    packet.winnerPlayerId = winnerId;
+
+    m_server->SendToAll((const char*)&packet, sizeof(packet));
+
+    printf("게임 결과 전송 (승자 %d)\n", winnerId);
 }
