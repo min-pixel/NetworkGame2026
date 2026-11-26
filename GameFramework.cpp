@@ -236,6 +236,7 @@ void CGameFramework::ProcessNetEvents()
     std::vector<NetEvent> events;
     m_networkClient->PopEvents(events);
     ESceneType nextGameScene = ESceneType::None;
+    ESceneType nextResultScene = ESceneType::None;
 
     for (int i = 0; i < (int)events.size(); i++)
     {
@@ -262,19 +263,32 @@ void CGameFramework::ProcessNetEvents()
             {
                 m_lobbyState = events[i].lobbyState;
                 m_hasLobbyState = true;
+
+                if (currentSceneType == ESceneType::MapSelect)
+                {
+                    scene->OnNetEvent(events[i]);
+                }
             }
+
+            continue;
         }
 
         if (events[i].type == EPacketType::SC_GameStart)
         {
-            if (events[i].gameStart.mapNumber >= 1 &&
+            if (!m_hasGameStart && !m_hasGameResult &&
+                (currentSceneType == ESceneType::Start ||
+                    currentSceneType == ESceneType::MapSelect) &&
+                events[i].gameStart.mapNumber >= 1 &&
                 events[i].gameStart.mapNumber <= 3 &&
                 events[i].gameStart.playerCount >= 2 &&
                 events[i].gameStart.playerCount <= MAX_PLAYERS)
             {
                 m_gameStart = events[i].gameStart;
                 m_hasGameStart = true;
+                m_lobbyState = {};
                 m_hasLobbyState = false;
+                m_inputSendElapsed = 0.0f;
+                m_networkClient->ClearLatestStates();
 
                 m_gameResult = {};
                 m_hasGameResult = false;
@@ -296,12 +310,42 @@ void CGameFramework::ProcessNetEvents()
         
         if (events[i].type == EPacketType::SC_GameResult)
         {
+            if (!m_hasGameStart || m_hasGameResult)
+            {
+                continue;
+            }
+
+            uint8_t winnerId = events[i].gameResult.winnerPlayerId;
+            bool validWinner = (winnerId == INVALID_PLAYER_ID);
+
+            for (int j = 0; j < m_gameStart.playerCount; ++j)
+            {
+                if (m_gameStart.players[j].playerId == winnerId)
+                {
+                    validWinner = true;
+                    break;
+                }
+            }
+
+            if (!validWinner)
+            {
+                continue;
+            }
+
             m_gameResult = events[i].gameResult;
             m_hasGameResult = true;
+            m_hasGameStart = false;
+            m_inputSendElapsed = 0.0f;
+            m_networkClient->ClearLatestStates();
+
+            bool victory = winnerId != INVALID_PLAYER_ID &&
+                winnerId == m_networkClient->GetMyPlayerId();
+
+            nextResultScene = victory ? ESceneType::End : ESceneType::Defeat;
 
             char message[128];
             sprintf_s(message, "[CLIENT] GAME RESULT: winner=%u\n",
-                (unsigned)m_gameResult.winnerPlayerId);
+                (unsigned)winnerId);
 
             OutputDebugStringA(message);
         }
@@ -310,7 +354,11 @@ void CGameFramework::ProcessNetEvents()
         scene->OnNetEvent(events[i]);
     }
 
-    if (nextGameScene != ESceneType::None)
+    if (nextResultScene != ESceneType::None)
+    {
+        ChangeScene(nextResultScene, true);
+    }
+    else if (nextGameScene != ESceneType::None)
     {
         ChangeScene(nextGameScene, true);
     }
@@ -1262,6 +1310,7 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
     if (scene)
     {
         scene->SetNetworkClient(m_networkClient);
+        scene->BuildObjects(clientWidth, clientHeight);
 
         if (nextScene == ESceneType::MapSelect && m_hasLobbyState)
         {
@@ -1270,8 +1319,6 @@ void CGameFramework::ChangeScene(ESceneType nextScene, bool buildDirectResources
             lobbyEvent.lobbyState = m_lobbyState;
             scene->OnNetEvent(lobbyEvent);
         }
-
-        scene->BuildObjects(clientWidth, clientHeight);
     }
 
     if (buildDirectResources)
@@ -1298,6 +1345,28 @@ void CGameFramework::CheckSceneChange()
     }
 
     scene->ClearRequestedScene();
+
+    if (m_hasGameStart &&
+        (currentSceneType == ESceneType::GameMap1 ||
+            currentSceneType == ESceneType::GameMap2 ||
+            currentSceneType == ESceneType::GameMap3) &&
+        (requested == ESceneType::End ||
+            requested == ESceneType::Defeat ||
+            requested == ESceneType::MapSelect))
+    {
+        return;
+    }
+
+    if ((currentSceneType == ESceneType::End ||
+        currentSceneType == ESceneType::Defeat) &&
+        requested == ESceneType::MapSelect)
+    {
+        m_gameResult = {};
+        m_hasGameResult = false;
+        m_gameStart = {};
+        m_hasGameStart = false;
+        m_inputSendElapsed = 0.0f;
+    }
 
     ChangeScene(requested, true);
 }
