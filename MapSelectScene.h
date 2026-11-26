@@ -70,5 +70,6 @@ private:
     SC_LobbyState lobbyState = {};
     bool hasLobbyState = false;
     bool readySent = false;
+    bool readyConfirmed = false;
 };
 

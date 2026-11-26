@@ -58,19 +58,33 @@ void CMapSelectScene::SetLobbyState(const SC_LobbyState& state)
     lobbyState = state;
     hasLobbyState = true;
 
+    bool myPlayerFound = false;
+    bool myPlayerReady = false;
+
     if (networkClient != nullptr)
     {
         uint8_t myId = networkClient->GetMyPlayerId();
 
         for (int i = 0; i < lobbyState.playerCount; ++i)
         {
-            if (lobbyState.players[i].playerId == myId &&
-                lobbyState.players[i].ready != 0)
+            if (lobbyState.players[i].playerId == myId)
             {
-                readySent = true;
+                myPlayerFound = true;
+                myPlayerReady = lobbyState.players[i].ready != 0;
                 break;
             }
         }
+    }
+
+    if (myPlayerReady)
+    {
+        readySent = true;
+        readyConfirmed = true;
+    }
+    else if (!myPlayerFound || readyConfirmed)
+    {
+        readySent = false;
+        readyConfirmed = false;
     }
 
     UpdateLobbyIndicators();
