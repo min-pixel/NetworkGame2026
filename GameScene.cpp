@@ -354,8 +354,26 @@ void CGameScene::UpdatePlayerInput()
 
 void CGameScene::OnNetEvent(const NetEvent& event)
 {
-    if (sessionConfig.gameMode != EGameMode::FreeForAll ||
-        event.type != EPacketType::SC_Event)
+    if (sessionConfig.gameMode != EGameMode::FreeForAll)
+    {
+        return;
+    }
+
+    if (event.type == EPacketType::SC_GameResult)
+    {
+        const uint8_t winnerId = event.gameResult.winnerPlayerId;
+        if (winnerId != INVALID_PLAYER_ID &&
+            (winnerId >= m_playerById.size() || !m_playerById[winnerId]))
+        {
+            return;
+        }
+
+        requestedScene = winnerId != INVALID_PLAYER_ID &&
+            winnerId == sessionConfig.myPlayerId ? ESceneType::End : ESceneType::Defeat;
+        return;
+    }
+
+    if (event.type != EPacketType::SC_Event)
     {
         return;
     }
