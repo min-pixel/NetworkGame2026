@@ -12,7 +12,7 @@
 
 // 상수
 constexpr int MAX_PLAYERS = 4;
-constexpr int MIN_PLAYERS_TO_START = 2;
+constexpr int MIN_PLAYERS_TO_START = 4;
 constexpr int MAX_ENEMIES = 32;
 constexpr int MAX_BULLETS = 64;
 constexpr uint8_t INVALID_PLAYER_ID = 255;

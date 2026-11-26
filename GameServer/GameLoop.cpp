@@ -233,7 +233,7 @@ void CGameLoop::Run()
         if (IsGameOver(winnerId))
         {
             SendResult(winnerId);
-            //break;
+            break;
         }
     }
 }

@@ -352,3 +352,38 @@ void CGameServer::ClearInputs()
 
     LeaveCriticalSection(&m_inputLock);
 }
+
+void CGameServer::SetReady(uint8_t playerId)
+{
+    EnterCriticalSection(&m_seatLock);
+    m_seats[playerId].ready = true;
+    LeaveCriticalSection(&m_seatLock);
+}
+
+
+
+void CGameServer::SendLobbyStateToAll()
+{
+    SC_LobbyState packet = {};
+    packet.header.size = sizeof(SC_LobbyState);
+    packet.header.type = (uint8_t)EPacketType::SC_LobbyState;
+
+    EnterCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (!m_seats[i].used)
+        {
+            continue;
+        }
+
+        LobbyPlayerInfo& info = packet.players[packet.playerCount];
+        info.playerId = (uint8_t)i;
+        info.ready = m_seats[i].ready ? 1 : 0;
+        ++packet.playerCount;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+
+    SendToAll((const char*)&packet, sizeof(packet));
+}
