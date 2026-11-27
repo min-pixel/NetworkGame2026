@@ -777,29 +777,37 @@ void CGameWorld::CheckBulletHits(std::vector<CEnemy*>& outDeadEnemies)
             }
         }
 
-        else if (bullet->GetOwner() == EBulletOwner::Enemy)
+        if (!bullet->IsActive())
         {
-            for (CPlayer* player : players)
+            continue;
+        }
+
+        const bool firedByPlayer = bullet->GetOwner() == EBulletOwner::Player;
+        for (CPlayer* player : players)
+        {
+            if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
             {
-                if (!player || !player->IsActive() || player->IsDead() || player->IsGhost() || !player->GetCollider())
-                {
-                    continue;
-                }
-
-                if (!bullet->GetCollider()->Intersects(player->GetCollider()))
-                {
-                    continue;
-                }
-
-                bullet->SetActive(false);
-
-                if (!IsShieldBlocking(player))
-                {
-                    player->ApplyDamage(bullet->GetDamage());
-                }
-
-                break;
+                continue;
             }
+
+            if (firedByPlayer && bullet->GetOwnerPlayerId() == player->playerId)
+            {
+                continue;
+            }
+
+            if (!bullet->GetCollider()->Intersects(player->GetCollider()))
+            {
+                continue;
+            }
+
+            bullet->SetActive(false);
+
+            if (!IsShieldBlocking(player))
+            {
+                player->ApplyDamage(bullet->GetDamage());
+            }
+
+            break;
         }
     }
 }
