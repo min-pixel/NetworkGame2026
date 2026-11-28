@@ -158,11 +158,20 @@ void CGameServer::TcpCommLoop(SOCKET sock)
     }
 
     printf("%d번 접속\n", playerId);
+    SendLobbyStateToAll();
 
     char buf[sizeof(CS_Ready)];
 
     while (RecvPacket(sock, buf, sizeof(buf)))
     {
+        PacketHeader* header = (PacketHeader*)buf;
+
+        if (header->type == (uint8_t)EPacketType::CS_Ready)
+        {
+            SetReady(playerId);
+            printf("%d번 준비\n", playerId);
+            SendLobbyStateToAll();
+        }
     }
 
     printf("%d번 끊김\n", playerId);
@@ -316,22 +325,31 @@ void CGameServer::GetParticipants(bool outJoined[MAX_PLAYERS])
 bool CGameServer::TryStartGame()
 {
     bool start = false;
+  
 
     EnterCriticalSection(&m_seatLock);
 
     if (!m_inGame)
     {
         int count = 0;
+        bool allReady = true;
 
         for (int i = 0; i < MAX_PLAYERS; ++i)
         {
-            if (m_seats[i].used)
+            if (!m_seats[i].used)
             {
-                ++count;
+                continue;
+            }
+            ++count;
+
+            if (!m_seats[i].ready)
+            {
+                allReady = false;
             }
         }
 
-        start = (count >= 1);
+
+        start = (count >= MIN_PLAYERS_TO_START && allReady);
         m_inGame = start;
     }
 
@@ -351,4 +369,39 @@ void CGameServer::ClearInputs()
     }
 
     LeaveCriticalSection(&m_inputLock);
+}
+
+void CGameServer::SetReady(uint8_t playerId)
+{
+    EnterCriticalSection(&m_seatLock);
+    m_seats[playerId].ready = true;
+    LeaveCriticalSection(&m_seatLock);
+}
+
+
+
+void CGameServer::SendLobbyStateToAll()
+{
+    SC_LobbyState packet = {};
+    packet.header.size = sizeof(SC_LobbyState);
+    packet.header.type = (uint8_t)EPacketType::SC_LobbyState;
+
+    EnterCriticalSection(&m_seatLock);
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (!m_seats[i].used)
+        {
+            continue;
+        }
+
+        LobbyPlayerInfo& info = packet.players[packet.playerCount];
+        info.playerId = (uint8_t)i;
+        info.ready = m_seats[i].ready ? 1 : 0;
+        ++packet.playerCount;
+    }
+
+    LeaveCriticalSection(&m_seatLock);
+
+    SendToAll((const char*)&packet, sizeof(packet));
 }

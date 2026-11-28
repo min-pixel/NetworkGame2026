@@ -51,7 +51,8 @@ public:
 
     void ClearInputs();
 
-
+    void SetReady(uint8_t playerId);
+    void SendLobbyStateToAll();
 
 private:
     SOCKET m_listenSock = INVALID_SOCKET;
