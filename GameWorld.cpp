@@ -815,6 +815,22 @@ const std::vector<CBullet*>& CGameWorld::GetBullets() const
     return bullets;
 }
 
+int CGameWorld::CountAlivePlayers(CPlayer*& outLastAlive) const
+{
+    outLastAlive = nullptr;
+    int aliveCount = 0;
+    for (CPlayer* player : players)
+    {
+        if (!player || !player->IsActive() || player->IsDead() || player->IsGhost())
+        {
+            continue;
+        }
+        ++aliveCount;
+        outLastAlive = player;
+    }
+    return aliveCount;
+}
+
 EGameResult CGameWorld::GetGameResult() const
 {
     return gameResult;

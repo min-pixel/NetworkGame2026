@@ -352,6 +352,70 @@ void CGameScene::UpdatePlayerInput()
     pendingShieldTogglePressed = false;
 }
 
+void CGameScene::OnNetEvent(const NetEvent& event)
+{
+    if (sessionConfig.gameMode != EGameMode::FreeForAll)
+    {
+        return;
+    }
+
+    if (event.type == EPacketType::SC_GameResult)
+    {
+        const uint8_t winnerId = event.gameResult.winnerPlayerId;
+        if (winnerId != INVALID_PLAYER_ID &&
+            (winnerId >= m_playerById.size() || !m_playerById[winnerId]))
+        {
+            return;
+        }
+
+        requestedScene = winnerId != INVALID_PLAYER_ID &&
+            winnerId == sessionConfig.myPlayerId ? ESceneType::End : ESceneType::Defeat;
+        return;
+    }
+
+    if (event.type != EPacketType::SC_Event)
+    {
+        return;
+    }
+
+    const SC_Event& death = event.gameEvent;
+    if (!std::isfinite(death.x) || !std::isfinite(death.y) || !std::isfinite(death.z))
+    {
+        return;
+    }
+
+    switch (static_cast<EEventType>(death.eventType))
+    {
+    case EEventType::PlayerDied:
+    {
+        if (death.subjectId >= m_playerById.size() || !m_playerById[death.subjectId])
+        {
+            return;
+        }
+        CPlayer* player = m_playerById[death.subjectId];
+        player->SetHealth(0);
+        player->SetGhost(true);
+        UpdateShieldVisual(player);
+        break;
+    }
+    case EEventType::EnemyDied:
+    {
+        auto& enemies = gameWorld.GetEnemies();
+        if (death.subjectId >= enemies.size() || !enemies[death.subjectId])
+        {
+            return;
+        }
+        // enemyIndex가 바뀌지 않도록 목록의 자리는 유지한다.
+        enemies[death.subjectId]->SetActive(false);
+        break;
+    }
+    default:
+        return;
+    }
+
+    StartEnemyExplosion(XMFLOAT3(death.x, death.y, death.z));
+}
+
 void CGameScene::ApplyStates(const LatestStates& latest)
 {
     if (sessionConfig.gameMode != EGameMode::FreeForAll || !localPlayer)
@@ -379,6 +443,12 @@ void CGameScene::ApplyStates(const LatestStates& latest)
 
             CPlayer* player = m_playerById[state.playerId];
             if (!player)
+            {
+                continue;
+            }
+
+            // 같은 경기의 사망은 확정이다. 늦게 온 생존 상태로 되돌리지 않는다.
+            if (player->IsGhost() && state.state == static_cast<uint8_t>(EPlayerState::Alive))
             {
                 continue;
             }
@@ -497,6 +567,8 @@ void CGameScene::AnimateObjects(float deltaTime)
                 player->CGameObject::Update(deltaTime);
             }
         }
+
+        UpdateEnemyExplosions(deltaTime);
 
         // 서버 상태가 반영된 내 기체를 카메라가 따라간다.
         if (localPlayer)
@@ -1342,6 +1414,11 @@ void CGameScene::ApplyPlayerDirectMeshes()
         default:
             break;
         }
+
+        if (sessionConfig.gameMode == EGameMode::FreeForAll)
+        {
+            UpdateShieldVisual(player);
+        }
     }
 }
 
@@ -1425,22 +1502,57 @@ void CGameScene::UpdateShieldVisual(CPlayer* player)
 
     const bool shieldEnabled = player->IsShieldEnabled();
 
+    XMFLOAT4 baseColor = player->GetPlayerType() == EPlayerType::Tank
+        ? XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f)
+        : XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f);
+
+    XMFLOAT4 tailColor(0.10f, 0.35f, 0.75f, 1.0f);
+
+    if (sessionConfig.gameMode == EGameMode::FreeForAll)
+    {
+        switch (player->playerId)
+        {
+        case 0:
+            baseColor = XMFLOAT4(0.20f, 0.47f, 0.87f, 1.0f);
+            break;
+
+        case 1:
+            baseColor = XMFLOAT4(0.90f, 0.28f, 0.28f, 1.0f);
+            break;
+
+        case 2:
+            baseColor = XMFLOAT4(0.21f, 0.70f, 0.35f, 1.0f);
+            break;
+
+        case 3:
+            baseColor = XMFLOAT4(0.90f, 0.75f, 0.16f, 1.0f);
+            break;
+        }
+
+        tailColor = XMFLOAT4(
+            baseColor.x * 0.7f,
+            baseColor.y * 0.7f,
+            baseColor.z * 0.7f,
+            1.0f);
+    }
+
     if (player->GetPlayerType() == EPlayerType::Tank)
     {
         static_cast<CTankPlayer*>(player)->SetTankColor(
-            shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
+            shieldEnabled ? shieldColor : baseColor);
     }
 
     if (player->GetPlayerType() == EPlayerType::Helicopter)
     {
         auto* helicopter = static_cast<CHelicopterPlayer*>(player);
+
         if (shieldEnabled)
         {
             helicopter->SetHelicopterColor(shieldColor, shieldTailColor);
         }
         else
         {
-            helicopter->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
+            helicopter->SetHelicopterColor(baseColor, tailColor);
         }
     }
 }

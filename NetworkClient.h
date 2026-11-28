@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <queue>
 #include <vector>
+#include <atomic>
 
 struct NetEvent
 {
@@ -37,6 +38,9 @@ private:
     HANDLE m_tcpThread = NULL;
     HANDLE m_udpThread = NULL;
 
+    bool m_wsaStarted = false;
+    std::atomic<bool> m_stopRequested{ true };
+
     CRITICAL_SECTION m_eventCs;
     CRITICAL_SECTION m_stateCs;
 
@@ -59,9 +63,13 @@ public:
     ~CNetworkClient();
     void PopEvents(std::vector<NetEvent>& events);
     void CopyLatestStates(LatestStates& states);
+    void ClearLatestStates();
 
     bool Connect(const char* serverIp);
     bool StartReceive();
+    void Disconnect();
+
+    bool SendReady();
 
     void SendInput(int8_t moveForward, int8_t moveRight, float cameraYaw, uint8_t fire, uint8_t shieldPressCount);
 
