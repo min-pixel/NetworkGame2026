@@ -51,6 +51,9 @@ private:
     CNetworkClient* m_networkClient = nullptr;
     ESceneType currentSceneType = ESceneType::None;
 
+    SC_LobbyState m_lobbyState = {};
+    bool m_hasLobbyState = false;
+
     SC_GameStart m_gameStart = {};
     bool m_hasGameStart = false;
 

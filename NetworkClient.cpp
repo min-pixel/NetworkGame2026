@@ -13,11 +13,36 @@ CNetworkClient::CNetworkClient()
 
 CNetworkClient::~CNetworkClient()
 {
-    bool connected = (m_tcpSock != INVALID_SOCKET);
+    Disconnect();
+    DeleteCriticalSection(&m_eventCs);
+    DeleteCriticalSection(&m_stateCs);
+}
 
-    if (connected)
+void CNetworkClient::Disconnect()
+{
+    m_stopRequested.store(true);
+
+    if (m_tcpSock != INVALID_SOCKET)
     {
         shutdown(m_tcpSock, SD_BOTH);
+    }
+
+    if (m_tcpThread != NULL)
+    {
+        WaitForSingleObject(m_tcpThread, INFINITE);
+        CloseHandle(m_tcpThread);
+        m_tcpThread = NULL;
+    }
+
+    if (m_udpThread != NULL)
+    {
+        WaitForSingleObject(m_udpThread, INFINITE);
+        CloseHandle(m_udpThread);
+        m_udpThread = NULL;
+    }
+
+    if (m_tcpSock != INVALID_SOCKET)
+    {
         closesocket(m_tcpSock);
         m_tcpSock = INVALID_SOCKET;
     }
@@ -28,33 +53,38 @@ CNetworkClient::~CNetworkClient()
         m_udpSock = INVALID_SOCKET;
     }
 
-    if (m_tcpThread != NULL)
+    EnterCriticalSection(&m_eventCs);
+    while (!m_eventQueue.empty())
     {
-        WaitForSingleObject(m_tcpThread, INFINITE);
-        CloseHandle(m_tcpThread);
+        m_eventQueue.pop();
     }
+    LeaveCriticalSection(&m_eventCs);
 
-    if (m_udpThread != NULL)
+    EnterCriticalSection(&m_stateCs);
+    m_latestStates = {};
+    for (int i = 0; i < 3; ++i)
     {
-        WaitForSingleObject(m_udpThread, INFINITE);
-        CloseHandle(m_udpThread);
+        m_lastTick[i] = 0;
+        m_hasTick[i] = false;
     }
+    LeaveCriticalSection(&m_stateCs);
 
-    DeleteCriticalSection(&m_eventCs);
-    DeleteCriticalSection(&m_stateCs);
+    m_serverUdpAddr = {};
+    m_inputSequence = 0;
+    m_myPlayerId = INVALID_PLAYER_ID;
 
-    if (connected)
+    if (m_wsaStarted)
     {
         WSACleanup();
+        m_wsaStarted = false;
     }
 }
-
 
 bool CNetworkClient::Connect(const char* serverIp)
 {
     WSADATA wsaData;
 
-    if (m_tcpSock != INVALID_SOCKET)
+    if (m_tcpSock != INVALID_SOCKET || m_wsaStarted)
     {
         return false;
     }
@@ -90,6 +120,7 @@ bool CNetworkClient::Connect(const char* serverIp)
         return false;
     }
     m_tcpSock = sock;
+    m_wsaStarted = true;
     m_serverUdpAddr = addr;
     m_serverUdpAddr.sin_port = htons(SERVER_UDP_PORT);
     return true;
@@ -99,7 +130,7 @@ bool CNetworkClient::Connect(const char* serverIp)
 
 bool CNetworkClient::StartReceive()
 {
-    if (m_tcpSock == INVALID_SOCKET)
+    if (m_tcpSock == INVALID_SOCKET || !m_wsaStarted)
     {
         return false;
     }
@@ -115,6 +146,7 @@ bool CNetworkClient::StartReceive()
 
     if (m_udpSock == INVALID_SOCKET)
     {
+        Disconnect();
         return false;
     }
 
@@ -125,10 +157,19 @@ bool CNetworkClient::StartReceive()
 
     if (bind(m_udpSock, (sockaddr*)&localAddr, sizeof(localAddr)) == SOCKET_ERROR)
     {
-        closesocket(m_udpSock);
-        m_udpSock = INVALID_SOCKET;
+        Disconnect();
         return false;
     }
+
+    DWORD receiveTimeout = 200;
+    if (setsockopt(m_udpSock, SOL_SOCKET, SO_RCVTIMEO,
+        (const char*)&receiveTimeout, sizeof(receiveTimeout)) == SOCKET_ERROR)
+    {
+        Disconnect();
+        return false;
+    }
+
+    m_stopRequested.store(false);
 
     m_udpThread = CreateThread(
         NULL,
@@ -141,8 +182,7 @@ bool CNetworkClient::StartReceive()
 
     if (m_udpThread == NULL)
     {
-        closesocket(m_udpSock);
-        m_udpSock = INVALID_SOCKET;
+        Disconnect();
         return false;
     }
 
@@ -157,19 +197,12 @@ bool CNetworkClient::StartReceive()
 
     if (m_tcpThread == NULL)
     {
-        closesocket(m_udpSock);
-        m_udpSock = INVALID_SOCKET;
-
-        WaitForSingleObject(m_udpThread, INFINITE);
-        CloseHandle(m_udpThread);
-        m_udpThread = NULL;
-
+        Disconnect();
         return false;
     }
 
     return true;
 }
-
 
 DWORD WINAPI CNetworkClient::TcpRecvThread(LPVOID param)
 {
@@ -195,7 +228,7 @@ void CNetworkClient::UdpRecvLoop()
 {
     char buf[1024];
 
-    while (1)
+    while (!m_stopRequested.load())
     {
         sockaddr_in senderAddr = {};
         int senderLen = sizeof(senderAddr);
@@ -211,6 +244,11 @@ void CNetworkClient::UdpRecvLoop()
 
         if (received == SOCKET_ERROR)
         {
+            int error = WSAGetLastError();
+            if (error == WSAETIMEDOUT || error == WSAEMSGSIZE)
+            {
+                continue;
+            }
             break;
         }
 
@@ -342,7 +380,7 @@ void CNetworkClient::TcpRecvLoop()
 {
     char buf[1024];
 
-    while (1)
+    while (!m_stopRequested.load())
     {
         if (RecvPacket(m_tcpSock, buf, sizeof(buf)) == false)
         {
@@ -409,6 +447,28 @@ void CNetworkClient::CopyLatestStates(LatestStates& states)
     LeaveCriticalSection(&m_stateCs);
 }
 
+void CNetworkClient::ClearLatestStates()
+{
+    EnterCriticalSection(&m_stateCs);
+    m_latestStates = {};
+    LeaveCriticalSection(&m_stateCs);
+}
+
+bool CNetworkClient::SendReady()
+{
+    if (m_stopRequested.load() || m_tcpSock == INVALID_SOCKET ||
+        m_myPlayerId == INVALID_PLAYER_ID)
+    {
+        return false;
+    }
+
+    CS_Ready packet = {};
+    packet.header.size = sizeof(packet);
+    packet.header.type = (uint8_t)EPacketType::CS_Ready;
+
+    return SendAll(m_tcpSock, (const char*)&packet, sizeof(packet));
+}
+
 void CNetworkClient::SetMyPlayerId(uint8_t playerId)
 {
     m_myPlayerId = playerId;
@@ -422,7 +482,7 @@ uint8_t CNetworkClient::GetMyPlayerId() const
 void CNetworkClient::SendInput(int8_t moveForward, int8_t moveRight,
     float cameraYaw, uint8_t fire, uint8_t shieldPressCount)
 {
-    if (m_udpSock == INVALID_SOCKET)
+    if (m_stopRequested.load() || m_udpSock == INVALID_SOCKET)
     {
         return;
     }

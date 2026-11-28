@@ -1420,6 +1420,11 @@ void CGameScene::ApplyPlayerDirectMeshes()
         default:
             break;
         }
+
+        if (sessionConfig.gameMode == EGameMode::FreeForAll)
+        {
+            UpdateShieldVisual(player);
+        }
     }
 }
 
@@ -1503,22 +1508,57 @@ void CGameScene::UpdateShieldVisual(CPlayer* player)
 
     const bool shieldEnabled = player->IsShieldEnabled();
 
+    XMFLOAT4 baseColor = player->GetPlayerType() == EPlayerType::Tank
+        ? XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f)
+        : XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f);
+
+    XMFLOAT4 tailColor(0.10f, 0.35f, 0.75f, 1.0f);
+
+    if (sessionConfig.gameMode == EGameMode::FreeForAll)
+    {
+        switch (player->playerId)
+        {
+        case 0:
+            baseColor = XMFLOAT4(0.20f, 0.47f, 0.87f, 1.0f);
+            break;
+
+        case 1:
+            baseColor = XMFLOAT4(0.90f, 0.28f, 0.28f, 1.0f);
+            break;
+
+        case 2:
+            baseColor = XMFLOAT4(0.21f, 0.70f, 0.35f, 1.0f);
+            break;
+
+        case 3:
+            baseColor = XMFLOAT4(0.90f, 0.75f, 0.16f, 1.0f);
+            break;
+        }
+
+        tailColor = XMFLOAT4(
+            baseColor.x * 0.7f,
+            baseColor.y * 0.7f,
+            baseColor.z * 0.7f,
+            1.0f);
+    }
+
     if (player->GetPlayerType() == EPlayerType::Tank)
     {
         static_cast<CTankPlayer*>(player)->SetTankColor(
-            shieldEnabled ? shieldColor : XMFLOAT4(0.20f, 0.65f, 0.30f, 1.0f));
+            shieldEnabled ? shieldColor : baseColor);
     }
 
     if (player->GetPlayerType() == EPlayerType::Helicopter)
     {
         auto* helicopter = static_cast<CHelicopterPlayer*>(player);
+
         if (shieldEnabled)
         {
             helicopter->SetHelicopterColor(shieldColor, shieldTailColor);
         }
         else
         {
-            helicopter->SetHelicopterColor(XMFLOAT4(0.15f, 0.55f, 0.95f, 1.0f), XMFLOAT4(0.10f, 0.35f, 0.75f, 1.0f));
+            helicopter->SetHelicopterColor(baseColor, tailColor);
         }
     }
 }

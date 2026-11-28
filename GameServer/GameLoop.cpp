@@ -143,6 +143,59 @@ void CGameLoop::UpdateWorld(const CS_Input inputs[MAX_PLAYERS], std::vector<SC_E
     std::vector<CEnemy*> deadEnemies;
     m_world.CheckBulletHits(deadEnemies);
 
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        CPlayer* player = m_playerById[i];
+
+        if (!player || !player->IsDead() || player->IsGhost())
+        {
+            continue;
+        }
+
+        player->SetGhost(true);
+
+        XMFLOAT3 position = player->GetPosition();
+        SC_Event event = {};
+        event.header.size = sizeof(SC_Event);
+        event.header.type = (uint8_t)EPacketType::SC_Event;
+        event.eventType = (uint8_t)EEventType::PlayerDied;
+        event.subjectId = (uint8_t)i;
+        event.x = position.x;
+        event.y = position.y;
+        event.z = position.z;
+        outEvents.push_back(event);
+    }
+
+    std::vector<CEnemy*>& enemies = m_world.GetEnemies();
+
+    for (CEnemy* deadEnemy : deadEnemies)
+    {
+        for (int i = 0; i < (int)enemies.size(); ++i)
+        {
+            if (enemies[i] != deadEnemy)
+            {
+                continue;
+            }
+
+            XMFLOAT3 position = deadEnemy->GetPosition();
+            SC_Event event = {};
+            event.header.size = sizeof(SC_Event);
+            event.header.type = (uint8_t)EPacketType::SC_Event;
+            event.eventType = (uint8_t)EEventType::EnemyDied;
+            event.subjectId = (uint8_t)i;
+            event.x = position.x;
+            event.y = position.y;
+            event.z = position.z;
+            outEvents.push_back(event);
+            break;
+        }
+    }
+
+    for (const SC_Event& event : outEvents) printf("Æ½ %u: %s %d¹ø »ç¸Á\n", m_tick, event.eventType == (uint8_t)EEventType::PlayerDied ? "ÇÃ·¹ÀÌ¾î" : "Àû", event.subjectId);
+
+
+
+
     if (!deadEnemies.empty()) printf("Æ½ %u: Àû %d¸¶¸® »ç¸Á\n", m_tick, (int)deadEnemies.size());
 
 }
@@ -173,7 +226,15 @@ void CGameLoop::Run()
     while (true)
     {
         WaitNextTick();
-        RunTick();
+         RunTick();
+
+        uint8_t winnerId = INVALID_PLAYER_ID;
+
+        if (IsGameOver(winnerId))
+        {
+            SendResult(winnerId);
+            break;
+        }
     }
 }
 
@@ -188,6 +249,11 @@ void CGameLoop::RunTick()
 
     std::vector<SC_Event> events;
     UpdateWorld(inputs, events);
+
+    SendEvents(events);
+
+   
+
 
     SendStates();
 }
@@ -246,7 +312,9 @@ int CGameLoop::FillPlayerStates(SC_PlayerStates& out)
         XMFLOAT3 position = player->GetPosition();
         PlayerStateInfo& info = out.players[out.count];
         info.playerId = (uint8_t)i;
-        info.state = (uint8_t)EPlayerState::Alive;
+        //info.state = (uint8_t)EPlayerState::Alive;
+        info.state = (uint8_t)(player->IsGhost() ? EPlayerState::Ghost : EPlayerState::Alive);
+        
         info.shieldEnabled = player->IsShieldEnabled() ? 1 : 0;
         info.health = (uint8_t)player->GetHealth();
         info.x = position.x;
@@ -326,4 +394,59 @@ int CGameLoop::FillBulletStates(SC_BulletStates& out)
     int bytes = STATE_PACKET_HEAD_SIZE + (int)sizeof(BulletStateInfo) * out.count;
     out.header.size = (uint16_t)bytes;
     return bytes;
+}
+
+void CGameLoop::SendEvents(const std::vector<SC_Event>& events)
+{
+    for (const SC_Event& event : events)
+    {
+        m_server->SendToAll((const char*)&event, sizeof(event));
+
+        printf("Æ½ %u: %s %d¹ø »ç¸Á Àü¼Û\n", m_tick, event.eventType == (uint8_t)EEventType::PlayerDied ? "ÇÃ·¹ÀÌ¾î" : "Àû", event.subjectId);
+
+    }
+}
+
+
+bool CGameLoop::IsGameOver(uint8_t& outWinnerId)
+{
+    int aliveCount = 0;
+    outWinnerId = INVALID_PLAYER_ID;
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        CPlayer* player = m_playerById[i];
+
+        if (!player || player->IsDead() || player->IsGhost())
+        {
+            continue;
+        }
+
+        ++aliveCount;
+        outWinnerId = (uint8_t)i;
+    }
+
+    if (aliveCount > 1)
+    {
+        return false;
+    }
+
+    if (aliveCount == 0)
+    {
+        outWinnerId = INVALID_PLAYER_ID;
+    }
+
+    return true;
+}
+
+void CGameLoop::SendResult(uint8_t winnerId)
+{
+    SC_GameResult packet = {};
+    packet.header.size = sizeof(SC_GameResult);
+    packet.header.type = (uint8_t)EPacketType::SC_GameResult;
+    packet.winnerPlayerId = winnerId;
+
+    m_server->SendToAll((const char*)&packet, sizeof(packet));
+
+    printf("°ÔÀÓ °á°ú Àü¼Û (½ÂÀÚ %d)\n", winnerId);
 }

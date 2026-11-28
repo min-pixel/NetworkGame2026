@@ -6,6 +6,7 @@
 #include "Camera.h"
 #include "Mesh.h"
 #include "Object.h"
+#include "NetworkClient.h"
 
 #include <random>
 
@@ -34,6 +35,62 @@ void CMapSelectScene::BuildObjects(int width, int height)
     }
 }
 
+void CMapSelectScene::SetNetworkClient(CNetworkClient* client)
+{
+    networkClient = client;
+}
+
+void CMapSelectScene::OnNetEvent(const NetEvent& event)
+{
+    if (event.type == EPacketType::SC_LobbyState)
+    {
+        SetLobbyState(event.lobbyState);
+    }
+}
+
+void CMapSelectScene::SetLobbyState(const SC_LobbyState& state)
+{
+    if (state.playerCount > MAX_PLAYERS)
+    {
+        return;
+    }
+
+    lobbyState = state;
+    hasLobbyState = true;
+
+    bool myPlayerFound = false;
+    bool myPlayerReady = false;
+
+    if (networkClient != nullptr)
+    {
+        uint8_t myId = networkClient->GetMyPlayerId();
+
+        for (int i = 0; i < lobbyState.playerCount; ++i)
+        {
+            if (lobbyState.players[i].playerId == myId)
+            {
+                myPlayerFound = true;
+                myPlayerReady = lobbyState.players[i].ready != 0;
+                break;
+            }
+        }
+    }
+
+    if (myPlayerReady)
+    {
+        readySent = true;
+        readyConfirmed = true;
+    }
+    else if (!myPlayerFound || readyConfirmed)
+    {
+        readySent = false;
+        readyConfirmed = false;
+    }
+
+    UpdateLobbyIndicators();
+    UpdateReadyButtonColor();
+}
+
 void CMapSelectScene::ReleaseObjects()
 {
     if (numberOne)
@@ -52,6 +109,12 @@ void CMapSelectScene::ReleaseObjects()
     {
         delete camera;
         camera = nullptr;
+    }
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        delete lobbyIndicators[i];
+        lobbyIndicators[i] = nullptr;
     }
 
     if (sharedBlockMesh)
@@ -119,30 +182,11 @@ bool CMapSelectScene::OnProcessingMouseMessage(HWND hWnd, UINT message, WPARAM w
 
         if (PickNumberOne(mouseX, mouseY))
         {
-            static std::mt19937 randomGenerator(std::random_device{}());
-
-            std::uniform_int_distribution<int>
-                mapDistribution(1, 3);
-
-            int randomMap = mapDistribution(randomGenerator);
-
-            switch (randomMap)
+            if (!readySent && networkClient != nullptr && networkClient->SendReady())
             {
-            case 1:
-                requestedScene = ESceneType::GameMap1;
-                break;
-
-            case 2:
-                requestedScene = ESceneType::GameMap2;
-                break;
-
-            case 3:
-                requestedScene = ESceneType::GameMap3;
-                break;
-
-            default:
-                requestedScene = ESceneType::GameMap1;
-                break;
+                readySent = true;
+                UpdateReadyButtonColor();
+                OutputDebugStringA("[CLIENT] CS_Ready sent\n");
             }
 
             return true;
@@ -172,6 +216,8 @@ bool CMapSelectScene::BuildDirectResources(ID3D12Device* device, ID3D12GraphicsC
 
     BuildNumberOne();
     BuildNumberTwo();
+    BuildLobbyIndicators();
+    UpdateReadyButtonColor();
 
     return true;
 }
@@ -202,6 +248,80 @@ void CMapSelectScene::RenderDirect(ID3D12GraphicsCommandList* commandList)
     {
         numberTwo->RenderDirect(commandList);
     }
+
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (lobbyIndicators[i])
+        {
+            lobbyIndicators[i]->RenderDirect(commandList);
+        }
+    }
+}
+
+void CMapSelectScene::BuildLobbyIndicators()
+{
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (!lobbyIndicators[i])
+        {
+            lobbyIndicators[i] = new CGameObject();
+            lobbyIndicators[i]->SetDirectMesh(sharedBlockMesh);
+            lobbyIndicators[i]->SetScale(0.7f, 0.7f, 0.7f);
+            lobbyIndicators[i]->SetPosition(-3.0f + 2.0f * i, 4.0f, 10.0f);
+            lobbyIndicators[i]->Update(0.0f);
+        }
+    }
+
+    UpdateLobbyIndicators();
+}
+
+void CMapSelectScene::UpdateLobbyIndicators()
+{
+    for (int i = 0; i < MAX_PLAYERS; ++i)
+    {
+        if (!lobbyIndicators[i])
+        {
+            continue;
+        }
+
+        XMFLOAT4 color(0.3f, 0.3f, 0.3f, 1.0f);
+
+        if (hasLobbyState)
+        {
+            for (int j = 0; j < lobbyState.playerCount; ++j)
+            {
+                if (lobbyState.players[j].playerId == i)
+                {
+                    color = lobbyState.players[j].ready != 0
+                        ? XMFLOAT4(0.2f, 0.9f, 0.3f, 1.0f)
+                        : XMFLOAT4(1.0f, 0.7f, 0.1f, 1.0f);
+                    break;
+                }
+            }
+        }
+
+        lobbyIndicators[i]->SetColor(color);
+    }
+}
+
+void CMapSelectScene::UpdateReadyButtonColor()
+{
+    if (!numberOne)
+    {
+        return;
+    }
+
+    XMFLOAT4 color = readySent
+        ? XMFLOAT4(0.2f, 0.9f, 0.3f, 1.0f)
+        : XMFLOAT4(0.3f, 0.8f, 1.0f, 1.0f);
+
+    for (CGameObject* block : numberOne->GetChildren())
+    {
+        if (block)
+        {
+            block->SetColor(color);
+        }
+    }
 }
 
 void CMapSelectScene::BuildNumberOne()
@@ -221,33 +341,31 @@ void CMapSelectScene::BuildNumberOne()
     numberOne->SetScale(0.13f, 0.13f, 0.13f);
 
     // Start
-
-    // S
     numberOne->AddBlock(-9.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-8.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-7.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-9.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(-7.0f, -21.0f, 0.0f);
     numberOne->AddBlock(-9.0f, -22.0f, 0.0f);
     numberOne->AddBlock(-8.0f, -22.0f, 0.0f);
     numberOne->AddBlock(-7.0f, -22.0f, 0.0f);
-    numberOne->AddBlock(-7.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-9.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-8.0f, -23.0f, 0.0f);
     numberOne->AddBlock(-9.0f, -24.0f, 0.0f);
-    numberOne->AddBlock(-8.0f, -24.0f, 0.0f);
     numberOne->AddBlock(-7.0f, -24.0f, 0.0f);
 
-    // T
     numberOne->AddBlock(-5.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-4.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-3.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(-4.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -22.0f, 0.0f);
     numberOne->AddBlock(-4.0f, -22.0f, 0.0f);
-    numberOne->AddBlock(-4.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(-5.0f, -24.0f, 0.0f);
     numberOne->AddBlock(-4.0f, -24.0f, 0.0f);
+    numberOne->AddBlock(-3.0f, -24.0f, 0.0f);
 
-    // A
-    numberOne->AddBlock(-1.0f, -20.0f, 0.0f);
     numberOne->AddBlock(0.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(1.0f, -20.0f, 0.0f);
     numberOne->AddBlock(-1.0f, -21.0f, 0.0f);
     numberOne->AddBlock(1.0f, -21.0f, 0.0f);
     numberOne->AddBlock(-1.0f, -22.0f, 0.0f);
@@ -258,25 +376,21 @@ void CMapSelectScene::BuildNumberOne()
     numberOne->AddBlock(-1.0f, -24.0f, 0.0f);
     numberOne->AddBlock(1.0f, -24.0f, 0.0f);
 
-    // R
     numberOne->AddBlock(3.0f, -20.0f, 0.0f);
     numberOne->AddBlock(4.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(5.0f, -20.0f, 0.0f);
     numberOne->AddBlock(3.0f, -21.0f, 0.0f);
     numberOne->AddBlock(5.0f, -21.0f, 0.0f);
     numberOne->AddBlock(3.0f, -22.0f, 0.0f);
-    numberOne->AddBlock(4.0f, -22.0f, 0.0f);
     numberOne->AddBlock(5.0f, -22.0f, 0.0f);
     numberOne->AddBlock(3.0f, -23.0f, 0.0f);
-    numberOne->AddBlock(4.0f, -23.0f, 0.0f);
+    numberOne->AddBlock(5.0f, -23.0f, 0.0f);
     numberOne->AddBlock(3.0f, -24.0f, 0.0f);
-    numberOne->AddBlock(5.0f, -24.0f, 0.0f);
+    numberOne->AddBlock(4.0f, -24.0f, 0.0f);
 
-    // T
     numberOne->AddBlock(7.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(8.0f, -20.0f, 0.0f);
     numberOne->AddBlock(9.0f, -20.0f, 0.0f);
-    numberOne->AddBlock(8.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(7.0f, -21.0f, 0.0f);
+    numberOne->AddBlock(9.0f, -21.0f, 0.0f);
     numberOne->AddBlock(8.0f, -22.0f, 0.0f);
     numberOne->AddBlock(8.0f, -23.0f, 0.0f);
     numberOne->AddBlock(8.0f, -24.0f, 0.0f);
