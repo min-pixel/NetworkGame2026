@@ -263,6 +263,12 @@ void CGameScene::ReleaseObjects()
     hasPlayerStateTick = false;
     hasEnemyStateTick = false;
     hasBulletStateTick = false;
+    requestedScene = ESceneType::None;
+    isLButtonDown = false;
+    isMouseCaptured = false;
+    ignoreMouseMove = false;
+    thirdPersonCameraYaw = 0.0f;
+    thirdPersonCameraPitch = 20.0f;
     shieldPressCount = 0;
     currentPlayerInput = {};
     pendingShieldTogglePressed = false;
